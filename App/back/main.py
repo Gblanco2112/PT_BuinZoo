@@ -43,7 +43,7 @@ class Alert(BaseModel):
 
 # In-memory data
 ANIMALS: List[Animal] = [
-    Animal(animal_id="a-001", nombre="Kaya", especie="Panthera leo"),
+    Animal(animal_id="a-001", nombre="Fito", especie="Caracal"),
     Animal(animal_id="a-002", nombre="Milo", especie="Giraffa camelopardalis"),
     Animal(animal_id="a-003", nombre="Uma",  especie="Panthera tigris"),
 ]
