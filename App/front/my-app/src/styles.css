@@ -368,3 +368,20 @@ html, body, #root {
    Tiny utility (used in JSX)
    ========================= */
 .p-4 { padding: 1rem; }
+
+
+
+/* Etiquetas bajo la cinta horaria */
+.ribbon-labels {
+  display: grid;
+  grid-template-columns: repeat(24, 1fr);
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.ribbon-time {
+  text-align: center;
+  font-size: 11px;
+  color: #9aa3b2;
+  line-height: 1.1;
+}

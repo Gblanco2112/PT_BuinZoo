@@ -2,9 +2,9 @@ import { useMemo, useState, useCallback, useEffect, useRef } from "react";
 import "./styles.css";
 
 /* =================================
-   API helpers
+   Ayudas de API
    ================================= */
-const API_BASE = "http://127.0.0.1:8000"; // <- adjust if needed
+const API_BASE = "http://127.0.0.1:8000"; // ajusta si es necesario
 
 async function getJSON(path, params) {
   const url = new URL(API_BASE + path);
@@ -24,7 +24,7 @@ async function postJSON(path, body) {
 }
 
 /* =================================
-   Icons / Notifications
+   Iconos / Notificaciones
    ================================= */
 function BellIcon({ filled }) {
   return (
@@ -63,14 +63,14 @@ function NotificationTray({ open, onClose, notifications, onMarkAllRead, anchorR
   if (!open) return null;
 
   return (
-    <div ref={trayRef} className="notif-tray" role="dialog" aria-label="Alerts">
+    <div ref={trayRef} className="notif-tray" role="dialog" aria-label="Alertas">
       <div className="notif-header">
-        <span>Alerts</span>
-        <button className="link-btn" onClick={onMarkAllRead}>Mark all read</button>
+        <span>Alertas</span>
+        <button className="link-btn" onClick={onMarkAllRead}>Marcar todo como leído</button>
       </div>
       <div className="notif-list" role="list">
         {notifications.length === 0 ? (
-          <div className="notif-empty">No alerts 🎉</div>
+          <div className="notif-empty">Sin alertas 🎉</div>
         ) : notifications.map(n => (
           <div key={n.id} className={`notif-item ${n.unread ? "unread" : ""}`} role="listitem" tabIndex={0}>
             <div className="notif-title">{n.title}</div>
@@ -78,35 +78,35 @@ function NotificationTray({ open, onClose, notifications, onMarkAllRead, anchorR
             <div className="notif-meta">{n.time}</div>
             {n.unread && (
               <div style={{ marginTop: 6 }}>
-                <button className="secondary-btn" onClick={() => onAck(n.id)}>Ack</button>
+                <button className="secondary-btn" onClick={() => onAck(n.id)}>Reconocer</button>
               </div>
             )}
           </div>
         ))}
       </div>
       <div className="notif-footer">
-        <button className="secondary-btn" onClick={onClose}>Close</button>
+        <button className="secondary-btn" onClick={onClose}>Cerrar</button>
       </div>
     </div>
   );
 }
 
 /* =================================
-   Behavior mapping
+   Mapeo de comportamientos (nombres tal como llegan del backend)
    ================================= */
 const BEHAVIORS = ["Foraging","Resting","Locomotion","Social","Play","Stereotypy"];
 const BEHAVIOR_COLORS = {
-  Foraging:   "#60a5fa", // blue
-  Resting:    "#94a3b8", // slate
-  Locomotion: "#34d399", // green
-  Social:     "#f59e0b", // amber
-  Play:       "#a78bfa", // violet
-  Stereotypy: "#ef4444", // red
+  Foraging:   "#60a5fa",
+  Resting:    "#94a3b8",
+  Locomotion: "#34d399",
+  Social:     "#f59e0b",
+  Play:       "#a78bfa",
+  Stereotypy: "#ef4444",
 };
 const colorForBehavior = (b) => BEHAVIOR_COLORS[b] || "#64748b";
 
 /* =================================
-   Hooks: animals, alerts, behavior
+   Hooks: animales, alertas, comportamiento
    ================================= */
 function useAnimals() {
   const [animals, setAnimals] = useState([]);
@@ -147,7 +147,7 @@ function useCurrentBehavior(animalId) {
       } catch (_) {}
     }
     load();
-    const t = setInterval(load, 15000); // poll
+    const t = setInterval(load, 15000); // sondeo
     return () => { stop = true; clearInterval(t); };
   }, [animalId]);
   return cur; // {behavior, confidence, ts}
@@ -161,7 +161,7 @@ function useBehaviorTimeline(animalId, dateISO) {
       .then(setRows)
       .catch(() => setRows([]));
   }, [animalId, dateISO]);
-  // fallback if backend returns empty
+  // respaldo si el backend devuelve vacío
   if (!rows.length) {
     const seed = (animalId || "seed").split("").reduce((a,c)=>a+c.charCodeAt(0),0);
     return Array.from({length:24}, (_,h) => ({
@@ -173,12 +173,12 @@ function useBehaviorTimeline(animalId, dateISO) {
 }
 
 /* =================================
-   Percent-of-day aggregation & chart
+   Agregación y gráfico de % del día
    ================================= */
 function useBehaviorPercentages(timeline) {
   return useMemo(() => {
     if (!timeline?.length) return [];
-    const total = timeline.length; // 24 hours in mock
+    const total = timeline.length; // 24 horas en el mock
     const counts = {};
     for (const { behavior } of timeline) counts[behavior] = (counts[behavior] || 0) + 1;
     return BEHAVIORS.map(b => ({ behavior: b, pct: ((counts[b] || 0) / total) * 100 }));
@@ -194,7 +194,7 @@ function BehaviorPercentBarChart({ data, height = 180, width = 560, padding = 18
     return height - padding - (v / maxPct) * h;
   };
   return (
-    <svg className="plot" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Behavior percentages today">
+    <svg className="plot" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Porcentaje de comportamientos hoy">
       <rect x="0" y="0" width={width} height={height} className="plot-bg" />
       <g className="plot-axes">
         <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} />
@@ -222,7 +222,7 @@ function BehaviorPercentBarChart({ data, height = 180, width = 560, padding = 18
 }
 
 /* =================================
-   Helpers for last-10-days view
+   Ayudas para “últimos 10 días”
    ================================= */
 function dateISOdaysAgo(n) {
   const d = new Date();
@@ -262,10 +262,17 @@ function useDominantBehaviorLastDays(animalId, days = 10) {
 }
 
 function LastDaysDominantStrip({ data }) {
-  // data: [{date, behavior}] oldest→newest
+  // data: [{date, behavior}] en orden del más antiguo → más reciente
+  const cols = data.length || 1;
+  const gridStyle = { gridTemplateColumns: `repeat(${cols}, 1fr)` };
+
+  const fmt = (iso) =>
+    new Date(iso).toLocaleDateString("es-CL", { day: "2-digit", month: "short" }).replace(".", "");
+
   return (
     <div>
-      <div className="ribbon" aria-label="Dominant behavior by day (last 10)">
+      {/* fila de bloques coloreados */}
+      <div className="ribbon" style={gridStyle} aria-label="Comportamiento dominante por día (últimos 10)">
         {data.map(({ date, behavior }) => (
           <div
             key={date}
@@ -276,18 +283,30 @@ function LastDaysDominantStrip({ data }) {
           />
         ))}
       </div>
+
+      {/* fila de etiquetas de fecha, alineadas 1:1 */}
+      <div className="ribbon-labels" style={gridStyle} aria-hidden="true">
+        {data.map(({ date }) => (
+          <div key={`d-${date}`} className="ribbon-time" title={new Date(date).toLocaleDateString("es-CL")}>
+            {fmt(date)}
+          </div>
+        ))}
+      </div>
+
+      {/* leyenda opcional */}
       <div className="ribbon-legend" style={{ marginTop: 8 }}>
         <div className="legend-item">
           <span className="legend-swatch" style={{ background:'#2b3240' }} />
-          <span className="legend-label">Oldest → Newest (10 days)</span>
+          <span className="legend-label">Del más antiguo al más reciente</span>
         </div>
       </div>
     </div>
   );
 }
 
+
 /* =================================
-   UI widgets: badge & ribbon
+   Componentes de UI: chapa + cinta
    ================================= */
 function BehaviorBadge({ behavior, confidence }) {
   if (!behavior) return (
@@ -302,20 +321,35 @@ function BehaviorBadge({ behavior, confidence }) {
 }
 
 function BehaviorRibbon({ timeline }) {
+  const cols = timeline.length || 1;
+  const gridStyle = { gridTemplateColumns: `repeat(${cols}, 1fr)` };
+
   return (
     <div>
-      <div className="ribbon" aria-label="Behavior by hour">
-        {timeline.map(({hour, behavior}) => (
+      {/* fila de cuadrados */}
+      <div className="ribbon" style={gridStyle} aria-label="Comportamiento por hora">
+        {timeline.map(({ hour, behavior }) => (
           <div
             key={hour}
             className="ribbon-cell"
-            title={`${String(hour).padStart(2,"0")}:00 — ${behavior}`}
+            title={`Hora ${String(hour).padStart(2,"0")}:00 — ${behavior}`}
             style={{ background: colorForBehavior(behavior) }}
-            aria-label={`Hour ${hour}, ${behavior}`}
+            aria-label={`Hora ${hour}, ${behavior}`}
           />
         ))}
       </div>
-      <div className="ribbon-legend">
+
+      {/* fila de etiquetas de hora */}
+      <div className="ribbon-labels" style={gridStyle} aria-hidden="true">
+        {timeline.map(({ hour }) => (
+          <div key={`t-${hour}`} className="ribbon-time">
+            {String(hour).padStart(2,"0")}:00
+          </div>
+        ))}
+      </div>
+
+      {/* leyenda */}
+      <div className="ribbon-legend" style={{ marginTop: 8 }}>
         {BEHAVIORS.map(b => (
           <div key={b} className="legend-item">
             <span className="legend-swatch" style={{ background: colorForBehavior(b) }} />
@@ -327,17 +361,19 @@ function BehaviorRibbon({ timeline }) {
   );
 }
 
+
+
 /* =================================
    App
    ================================= */
 export default function App() {
-  // Animals & selection
+  // Animales y selección
   const animals = useAnimals();
   const [selectedId, setSelectedId] = useState(null);
   const selected = useMemo(() => animals.find(a => a.animal_id === selectedId), [animals, selectedId]);
   useEffect(() => { if (!selectedId && animals[0]) setSelectedId(animals[0].animal_id); }, [animals, selectedId]);
 
-  // Alerts as notifications
+  // Alertas
   const { notifications, setNotifications, reload: reloadAlerts } = useAlerts(selectedId);
   const unreadCount = notifications.filter(n => n.unread).length;
   const [trayOpen, setTrayOpen] = useState(false);
@@ -345,7 +381,7 @@ export default function App() {
   const markAllRead = () => setNotifications(prev => prev.map(n => ({ ...n, unread: false })));
   async function ackAlert(id) { try { await postJSON(`/api/alerts/ack/${id}`); await reloadAlerts(); } catch (e) { console.error(e); } }
 
-  // Sidebar keyboard navigation
+  // Navegación por teclado en la barra lateral
   const listRef = useRef(null);
   const handleKeyDown = useCallback((e) => {
     const idx = Math.max(0, animals.findIndex(i => i.animal_id === selectedId));
@@ -371,14 +407,14 @@ export default function App() {
   };
   useEffect(() => { listRef.current?.focus(); }, [animals.length]);
 
-  // Behavior data
+  // Datos de comportamiento
   const todayISO = new Date().toISOString().slice(0,10);
   const currentBehavior = useCurrentBehavior(selectedId);
   const timeline = useBehaviorTimeline(selectedId, todayISO);
   const behaviorPercents = useBehaviorPercentages(timeline);
 
-  // Switchable panel: Today % vs Last 10 days
-  const [distViewIndex, setDistViewIndex] = useState(0); // 0=today %, 1=last 10 days
+  // Panel conmutado: Hoy % vs Últimos 10 días
+  const [distViewIndex, setDistViewIndex] = useState(0); // 0=hoy %, 1=últimos 10
   const distViews = ["today_pct", "last10_dom"];
   const nextDistView = () => setDistViewIndex(i => (i + 1) % distViews.length);
   const prevDistView = () => setDistViewIndex(i => (i - 1 + distViews.length) % distViews.length);
@@ -386,11 +422,11 @@ export default function App() {
 
   return (
     <div className="layout">
-      {/* Sidebar */}
+      {/* Barra lateral */}
       <aside
         className="sidebar"
         role="listbox"
-        aria-label="Animals"
+        aria-label="Animales"
         aria-activedescendant={selectedId ? `animal-${selectedId}` : undefined}
         tabIndex={0}
         onKeyDown={handleKeyDown}
@@ -415,7 +451,7 @@ export default function App() {
         })}
       </aside>
 
-      {/* Details */}
+      {/* Detalle */}
       <main className="detail">
         <header className="detail-header">
           <h1 className="detail-title">{selected?.nombre || "—"}</h1>
@@ -423,12 +459,12 @@ export default function App() {
 
           <button
             className="icon-btn notif-bell"
-            aria-label={`Open notifications${unreadCount ? `, ${unreadCount} unread` : ""}`}
+            aria-label={`Abrir alertas${unreadCount ? `, ${unreadCount} sin leer` : ""}`}
             aria-haspopup="dialog"
             aria-expanded={trayOpen}
             onClick={() => setTrayOpen(v => !v)}
             ref={bellRef}
-            title="Alerts"
+            title="Alertas"
           >
             <BellIcon filled={unreadCount > 0} />
             {unreadCount > 0 && <span className="badge" aria-hidden="true">{unreadCount}</span>}
@@ -445,32 +481,32 @@ export default function App() {
         />
 
         <section className="detail-body">
-          {/* Info cards */}
+          {/* Tarjetas de información */}
           <div className="detail-cards">
             <div className="card">
-              <div className="card-label">Animal ID</div>
+              <div className="card-label">ID del animal</div>
               <div className="card-value">{selected?.animal_id || "—"}</div>
             </div>
             <div className="card">
-              <div className="card-label">Current behavior</div>
+              <div className="card-label">Comportamiento actual</div>
               <div className="card-value">
                 <BehaviorBadge behavior={currentBehavior?.behavior} confidence={currentBehavior?.confidence} />
               </div>
             </div>
             <div className="card">
-              <div className="card-label">Updated</div>
+              <div className="card-label">Actualizado</div>
               <div className="card-value">
                 {currentBehavior?.ts ? new Date(currentBehavior.ts).toLocaleTimeString() : "—"}
               </div>
             </div>
           </div>
 
-          {/* Daily behavior ribbon */}
+          {/* Cinta diaria de comportamiento */}
           <div className="plot-panel" style={{ marginTop: 16 }}>
             <div className="plot-header">
               <div>
-                <div className="plot-title">Behavior today</div>
-                <div className="plot-subtitle">Dominant behavior per hour</div>
+                <div className="plot-title">Comportamiento de hoy</div>
+                <div className="plot-subtitle">Comportamiento dominante por hora</div>
               </div>
             </div>
             <div className="p-4">
@@ -478,32 +514,32 @@ export default function App() {
             </div>
           </div>
 
-          {/* Switchable panel: Today % vs Last 10 days */}
+          {/* Panel conmutado: Hoy % vs Últimos 10 días */}
           <div className="plot-panel" style={{ marginTop: 16 }}>
             <div className="plot-header">
               <div>
                 <div className="plot-title">
-                  {distViews[distViewIndex] === "today_pct"
-                    ? "% of time in each behavior (today)"
-                    : "Dominant behavior (last 10 days)"}
+                  {distViewIndex === 0
+                    ? "% del día en cada comportamiento (hoy)"
+                    : "Comportamiento dominante (últimos 10 días)"}
                 </div>
                 <div className="plot-subtitle">
-                  {distViews[distViewIndex] === "today_pct"
-                    ? "Based on dominant behavior per hour"
-                    : "One colored block per day — oldest to newest"}
+                  {distViewIndex === 0
+                    ? "Basado en el comportamiento dominante por hora"
+                    : "Un bloque coloreado por día — del más antiguo al más reciente"}
                 </div>
               </div>
 
               <div className="plot-switch">
-                <button className="arrow-btn" aria-label="Previous view" title="Previous (←)" onClick={prevDistView}>
+                <button className="arrow-btn" aria-label="Vista anterior" title="Anterior (←)" onClick={prevDistView}>
                   <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
                     <path d="M15 19l-7-7 7-7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
                 </button>
                 <div className="plot-switch-label">
-                  {distViews[distViewIndex] === "today_pct" ? "Today %" : "Last 10 days"}
+                  {distViewIndex === 0 ? "Hoy %" : "Últimos 10 días"}
                 </div>
-                <button className="arrow-btn" aria-label="Next view" title="Next (→)" onClick={nextDistView}>
+                <button className="arrow-btn" aria-label="Siguiente vista" title="Siguiente (→)" onClick={nextDistView}>
                   <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
                     <path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
@@ -512,10 +548,10 @@ export default function App() {
             </div>
 
             <div className="p-4">
-              {distViews[distViewIndex] === "today_pct" ? (
+              {distViewIndex === 0 ? (
                 <BehaviorPercentBarChart data={behaviorPercents} />
               ) : (
-                last10Loading ? <div className="plot-subtitle">Loading…</div> : <LastDaysDominantStrip data={last10} />
+                last10Loading ? <div className="plot-subtitle">Cargando…</div> : <LastDaysDominantStrip data={last10} />
               )}
             </div>
           </div>

@@ -104,10 +104,35 @@ def behavior_current(animal_id: str = Query(...)):
         "ts": datetime.now(timezone.utc).isoformat()
     }
 
+from datetime import datetime, timezone
+from fastapi import Query
+
+BEHAVIORS = ["Foraging", "Resting", "Locomotion", "Social", "Play", "Stereotypy"]
+
 @app.get("/api/behavior/timeline")
 def behavior_timeline(animal_id: str = Query(...), date: str = Query(None)):
-    # dominant behavior per hour (mock)
-    seed = sum(ord(c) for c in animal_id + (date or ""))
-    random.seed(seed)
-    rows = [{"hour": h, "behavior": random.choice(BEHAVIORS)} for h in range(24)]
+    # determine requested date
+    now = datetime.now(timezone.utc)
+    req_date = now.date() if not date else datetime.strptime(date, "%Y-%m-%d").date()
+
+    # future date -> no data yet
+    if req_date > now.date():
+        return []
+
+    # how many hours to output
+    if req_date == datetime.now(timezone.utc):
+        last_hour = now.hour            # 0..23, include current hour
+        hours = range(0, last_hour + 1)
+        print(last_hour)
+    else:
+        hours = range(0, 18)            # past dates -> full day available
+
+
+    # deterministic mock per animal/date/hour
+    base_seed = sum(ord(c) for c in animal_id + req_date.isoformat())
+    rows = []
+    for h in hours:
+        print(hours)
+        random.seed(base_seed + h)      # stable value for each hour
+        rows.append({"hour": h, "behavior": random.choice(BEHAVIORS)})
     return rows
