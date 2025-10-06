@@ -6,10 +6,11 @@ import "./styles.css";
    ================================= */
 const API_BASE = "http://127.0.0.1:8000"; // ajusta si es necesario
 
+
 async function getJSON(path, params) {
   const url = new URL(API_BASE + path);
   if (params) Object.entries(params).forEach(([k, v]) => v != null && url.searchParams.set(k, v));
-  const res = await fetch(url);
+  const res = await fetch(url, { credentials: "include" });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -17,6 +18,7 @@ async function postJSON(path, body) {
   const res = await fetch(API_BASE + path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    credentials: "include",      
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) throw new Error(await res.text());
