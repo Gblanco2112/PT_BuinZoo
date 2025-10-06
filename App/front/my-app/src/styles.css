@@ -74,8 +74,8 @@ html, body, #root {
   border-bottom: 1px solid #1e2430;
   margin-bottom: 16px;
   padding-bottom: 12px;
-  position: relative;      /* for bell positioning */
-  padding-right: 48px;     /* space for bell */
+  position: relative;      /* for header actions positioning */
+  padding-right: 0;        /* no extra space; actions are absolutely positioned */
 }
 
 .detail-title {
@@ -138,6 +138,39 @@ html, body, #root {
 }
 
 /* =========================
+   Header actions (bell + logout)
+   ========================= */
+.header-actions {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px; /* space between bell and logout */
+}
+
+/* Bell stays in flow but is the positioning context for its badge */
+.header-actions .icon-btn.notif-bell {
+  position: relative;   /* FIX: keep context for .badge */
+  transform: none;
+  margin-right: 8px;    /* room for badge overhang */
+}
+
+/* Keep the red badge over the bell, not the logout */
+.header-actions .notif-bell .badge {
+  top: -4px;
+  right: -4px;          /* tweak to taste (-2px for tighter) */
+  z-index: 2;
+}
+
+/* Logout icon button (same look/feel as .icon-btn) */
+.header-actions .logout-btn {
+  position: static;
+  transform: none;
+}
+
+/* =========================
    Notifications
    ========================= */
 
@@ -161,6 +194,7 @@ html, body, #root {
 .icon-btn:hover { background: #12182a; }
 .icon-btn:focus-visible { outline: 2px solid #3b82f6; outline-offset: 2px; }
 
+/* Default bell placement (overridden inside .header-actions) */
 .icon-btn.notif-bell {
   position: absolute;
   top: 50%;
@@ -364,12 +398,8 @@ html, body, #root {
 }
 .legend-label { font-size: 0.85rem; color: #cbd5e1; }
 
-/* =========================
-   Tiny utility (used in JSX)
-   ========================= */
+/* Tiny utility (used in JSX) */
 .p-4 { padding: 1rem; }
-
-
 
 /* Etiquetas bajo la cinta horaria */
 .ribbon-labels {
@@ -385,8 +415,6 @@ html, body, #root {
   color: #9aa3b2;
   line-height: 1.1;
 }
-
-
 
 /* =========================
    Login (fullscreen overlay)
