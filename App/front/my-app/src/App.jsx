@@ -7,6 +7,8 @@ import "./styles.css";
    Ayudas de API
    ================================= */
 const API_BASE = "http://127.0.0.1:8000"; // ajusta si es necesario
+const tz = "America/Santiago";
+const todayISO = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date()); // YYYY-MM-DD
 
 async function getJSON(path, params) {
   const url = new URL(API_BASE + path);
@@ -82,7 +84,7 @@ function LogoutIcon() {
   );
 }
 
-function NotificationTray({ open, onClose, notifications, onMarkAllRead, anchorRef, onAck }) {
+function NotificationTray({ open, onClose, notifications, onMarkAllRead, anchorRef, onAck, scope, onToggleScope }) {
   const trayRef = useRef(null);
 
   useEffect(() => {
@@ -105,26 +107,40 @@ function NotificationTray({ open, onClose, notifications, onMarkAllRead, anchorR
 
   if (!open) return null;
 
+  // Solo mostrar no leídas
+  const items = notifications.filter((n) => n.unread);
+
   return (
     <div ref={trayRef} className="notif-tray" role="dialog" aria-label="Alertas">
       <div className="notif-header">
         <span>Alertas</span>
-        <button className="link-btn" onClick={onMarkAllRead}>
-          Marcar todo como leído
-        </button>
+        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+          <button className="link-btn" onClick={onToggleScope}>
+            {scope === "selected" ? "Ver todas" : "Ver solo este animal"}
+          </button>
+          <button className="link-btn" onClick={onMarkAllRead}>
+            Marcar todo como leído
+          </button>
+        </div>
       </div>
+
       <div className="notif-list" role="list">
-        {notifications.length === 0 ? (
+        {items.length === 0 ? (
           <div className="notif-empty">Sin alertas 🎉</div>
         ) : (
-          notifications.map((n) => (
+          items.map((n) => (
             <div key={n.id} className={`notif-item ${n.unread ? "unread" : ""}`} role="listitem" tabIndex={0}>
               <div className="notif-title">{n.title}</div>
               <div className="notif-body">{n.body}</div>
-              <div className="notif-meta">{n.time}</div>
+              <div className="notif-meta">
+                {n.time}
+                {scope === "all" && n.animal_id && (
+                  <span className="notif-tag" style={{ marginLeft: 8 }}>Animal: {n.animal_id}</span>
+                )}
+              </div>
               {n.unread && (
                 <div style={{ marginTop: 6 }}>
-                  <button className="secondary-btn" onClick={() => onAck(n.id)}>
+                  <button className="secondary-btn" onClick={() => onAck(String(n.id))}>
                     Reconocer
                   </button>
                 </div>
@@ -133,6 +149,7 @@ function NotificationTray({ open, onClose, notifications, onMarkAllRead, anchorR
           ))
         )}
       </div>
+
       <div className="notif-footer">
         <button className="secondary-btn" onClick={onClose}>
           Cerrar
@@ -167,12 +184,15 @@ function useAnimals() {
   return animals;
 }
 
-function useAlerts(selectedAnimalId) {
+// scope-aware alerts: pass an animalId to filter, or null/undefined to fetch all
+function useAlerts(animalIdOrNull) {
   const [notifications, setNotifications] = useState([]);
   const load = async () => {
-    const rows = await getJSON("/api/alerts", selectedAnimalId ? { animal_id: selectedAnimalId } : undefined);
+    const params = animalIdOrNull ? { animal_id: animalIdOrNull } : undefined;
+    const rows = await getJSON("/api/alerts", params);
     const mapped = rows.map((r) => ({
-      id: r.alert_id,
+      id: String(r.alert_id), // normalizar a string
+      animal_id: r.animal_id ?? null,
       title: `${r.tipo} (${r.severidad})`,
       body: r.resumen || r.tipo,
       time: new Date(r.ts).toLocaleString(),
@@ -184,7 +204,7 @@ function useAlerts(selectedAnimalId) {
     load().catch(() => {});
     const t = setInterval(load, 10000);
     return () => clearInterval(t);
-  }, [selectedAnimalId]);
+  }, [animalIdOrNull]);
   return { notifications, setNotifications, reload: load };
 }
 
@@ -282,8 +302,8 @@ function BehaviorPercentBarChart({ data, height = 180, width = 560, padding = 18
    ================================= */
 function dateISOdaysAgo(n) {
   const d = new Date();
-  d.setDate(d.getDate() - n);
-  return d.toISOString().slice(0, 10);
+  d.setDate(d.getDate() - n); // still local arithmetic
+  return new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(d);
 }
 
 function useDominantBehaviorLastDays(animalId, days = 10) {
@@ -436,15 +456,43 @@ export default function App() {
     if (!selectedId && animals[0]) setSelectedId(animals[0].animal_id);
   }, [animals, selectedId]);
 
-  // Alertas
-  const { notifications, setNotifications, reload: reloadAlerts } = useAlerts(selectedId);
+  // Bandeja de alertas: ámbito (selected|all)
+  const [alertScope, setAlertScope] = useState("selected"); // "selected" | "all"
+  const toggleScope = useCallback(() => {
+    setAlertScope((s) => (s === "selected" ? "all" : "selected"));
+  }, []);
+
+  // Alertas según el ámbito
+  const { notifications, setNotifications, reload: reloadAlerts } =
+    useAlerts(alertScope === "selected" ? selectedId : null);
+
   const unreadCount = notifications.filter((n) => n.unread).length;
   const [trayOpen, setTrayOpen] = useState(false);
   const bellRef = useRef(null);
-  const markAllRead = () => setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
+
+  // Marcar todo como leído (optimista + persistente; usa bulk si existe)
+  const markAllRead = useCallback(async () => {
+    const ids = notifications.filter((n) => n.unread).map((n) => String(n.id));
+    if (!ids.length) return;
+
+    // Optimistic UI
+    setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
+
+    try {
+      // bulk endpoint disponible en el backend propuesto
+      await postJSON("/api/alerts/ack/bulk", { ids });
+    } finally {
+      await reloadAlerts(); // re-sync con backend
+    }
+  }, [notifications, setNotifications, reloadAlerts]);
+
   async function ackAlert(id) {
     try {
-      await postJSON(`/api/alerts/ack/${id}`);
+      const sid = String(id);
+      // Optimistic: ocultar inmediatamente
+      setNotifications((prev) => prev.map((n) => (String(n.id) === sid ? { ...n, unread: false } : n)));
+
+      await postJSON(`/api/alerts/ack/${sid}`);
       await reloadAlerts();
     } catch (e) {
       console.error(e);
@@ -491,7 +539,6 @@ export default function App() {
   }, [animals.length]);
 
   // Datos de comportamiento
-  const todayISO = new Date().toISOString().slice(0, 10);
   const currentBehavior = useCurrentBehavior(selectedId);
   const timeline = useBehaviorTimeline(selectedId, todayISO);
   const behaviorPercents = useBehaviorPercentages(timeline);
@@ -579,6 +626,8 @@ export default function App() {
           onMarkAllRead={markAllRead}
           anchorRef={bellRef}
           onAck={ackAlert}
+          scope={alertScope}
+          onToggleScope={toggleScope}
         />
 
         <section className="detail-body">
