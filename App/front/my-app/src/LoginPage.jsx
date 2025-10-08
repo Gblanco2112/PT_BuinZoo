@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useAuth } from "./AuthContext";
 // If you place the file in src/assets:
-import logo from "./assets/logo-web-buinzoo.jpg";
+import logo from "./assets/buinzoo_logo_otro.png";
 // If you prefer /public, delete the line above and use: <img src="/buinzoo-logo.png" ... />
 
 export default function LoginPage() {

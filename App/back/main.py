@@ -18,12 +18,12 @@ app = FastAPI(title="Zoo Behavior API", version="1.0.0")
 def seed_dev_user():
     db = SessionLocal()
     try:
-        u = db.query(models.User).filter(models.User.username == "keeper@zoo.com").first()
+        u = db.query(models.User).filter(models.User.username == "vicente.florez@uc.cl").first()
         if not u:
             u = models.User(
-                username="keeper@zoo.com",
-                email="keeper@zoo.com",
-                hashed_password=hash_password("ho"),
+                username="vicente.florez@uc.cl",
+                email="vicente.florez@uc.cl",
+                hashed_password=hash_password("Vicente1234"),
                 full_name="Keeper",
                 scopes="keeper",
             )
