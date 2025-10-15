@@ -1,0 +1,7 @@
+ultralytics>=8.2
+deep_sort_realtime
+opencv-python>=4.7
+numpy
+pandas
+torch>=2.0
+tqdm

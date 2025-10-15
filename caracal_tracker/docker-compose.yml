@@ -1,0 +1,13 @@
+services:
+  caracal-tracker:
+    build:
+      context: .
+    container_name: caracal-tracker
+    volumes:
+      - ./videos:/app/videos
+      - ./outputs:/app/outputs
+      - ./caracal_tracker_proxy.py:/app/caracal_tracker_proxy.py
+      - ./run_caracal_proxy.py:/app/run_caracal_proxy.py
+      - ./inspect_frame.py:/app/inspect_frame.py
+    tty: true
+    entrypoint: ["python", "run_caracal_proxy.py"]
