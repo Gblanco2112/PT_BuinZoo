@@ -1,0 +1,16 @@
+﻿version: "3.9"
+services:
+  caracal-tracker-cpu:
+    build:
+      context: .
+      dockerfile: Dockerfile.cpu
+    working_dir: /workspace
+    entrypoint: ["python", "run_speciesnet.py"]
+    command: ["-t"]
+    volumes:
+      - ./:/workspace
+      - cache_models:/root/.cache
+    tty: true
+
+volumes:
+  cache_models:

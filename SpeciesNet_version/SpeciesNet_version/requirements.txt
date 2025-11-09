@@ -1,0 +1,3 @@
+speciesnet
+opencv-python-headless
+pandas

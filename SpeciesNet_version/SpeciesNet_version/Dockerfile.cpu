@@ -1,0 +1,29 @@
+# Dockerfile.cpu — SpeciesNet (detector_only) + Deep SORT en CPU
+FROM python:3.10-slim
+
+ENV PIP_NO_CACHE_DIR=1 \
+    PYTHONUNBUFFERED=1 \
+    DEBIAN_FRONTEND=noninteractive
+
+# runtime multimedia (para VideoWriter/ffmpeg)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace
+
+# Dependencias (CPU): Torch CPU + SpeciesNet + DeepSORT + OpenCV headless
+# Pin fijo para reproducibilidad. Si cambias Torch, ajusta torchvision a la par.
+RUN python -m pip install --upgrade pip && \
+    pip install \
+      --index-url https://download.pytorch.org/whl/cpu \
+      torch==2.4.0+cpu torchvision==0.19.0+cpu && \
+    pip install \
+      "speciesnet==5.0.2" \
+      deep-sort-realtime==1.3.2 \
+      opencv-python-headless==4.10.0.84 \
+      numpy
+
+# El código se monta como volumen; solo definimos entrypoint
+ENTRYPOINT ["python", "run_speciesnet.py"]
+CMD ["-t"]

@@ -1,0 +1,26 @@
+services:
+  caracal-tracker-gpu:
+    image: speciesnet:gpu-cuda12.1
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu
+    working_dir: /workspace
+    entrypoint: ["python", "run_speciesnet.py"]
+    command: []
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+    volumes:
+      - ./:/workspace
+      - cache_models:/root/.cache
+    tty: true
+    stdin_open: true
+
+volumes:
+  cache_models:

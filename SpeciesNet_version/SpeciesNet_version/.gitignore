@@ -1,0 +1,8 @@
+# No subir videos ni CSV
+*.mp4
+*.csv
+
+# No subir caché de Python
+__pycache__/
+*.py[cod]
+*$py.class
