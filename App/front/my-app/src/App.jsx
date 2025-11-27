@@ -1,4 +1,3 @@
-// App.jsx
 import { useMemo, useState, useCallback, useEffect, useRef } from "react";
 import { useAuth } from "./AuthContext.jsx";
 import "./styles.css";
@@ -8,16 +7,23 @@ import "./styles.css";
    ================================= */
 const API_BASE = "http://127.0.0.1:8000"; // ajusta si es necesario
 const tz = "America/Santiago";
-const todayISO = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date()); // YYYY-MM-DD
+const todayISO = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(
+  new Date()
+); // YYYY-MM-DD
 
 async function getJSON(path, params) {
   const url = new URL(API_BASE + path);
-  if (params) Object.entries(params).forEach(([k, v]) => v != null && url.searchParams.set(k, v));
+  if (params)
+    Object.entries(params).forEach(
+      ([k, v]) => v != null && url.searchParams.set(k, v)
+    );
 
   let res = await fetch(url, { credentials: "include" });
   if (res.status === 401) {
-    // intenta refrescar y reintentar una vez
-    await fetch(API_BASE + "/auth/refresh", { method: "POST", credentials: "include" }).catch(() => {});
+    await fetch(API_BASE + "/auth/refresh", {
+      method: "POST",
+      credentials: "include",
+    }).catch(() => {});
     res = await fetch(url, { credentials: "include" });
   }
   if (!res.ok) throw new Error(await res.text());
@@ -32,7 +38,10 @@ async function postJSON(path, body) {
     body: body ? JSON.stringify(body) : undefined,
   });
   if (res.status === 401) {
-    await fetch(API_BASE + "/auth/refresh", { method: "POST", credentials: "include" }).catch(() => {});
+    await fetch(API_BASE + "/auth/refresh", {
+      method: "POST",
+      credentials: "include",
+    }).catch(() => {});
     res = await fetch(API_BASE + path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -44,12 +53,28 @@ async function postJSON(path, body) {
   return res.json();
 }
 
+function labelFromISO(dateISO) {
+  if (!dateISO) return "";
+  const [y, m, d] = dateISO.split("-").map(Number);
+  const localDate = new Date(y, m - 1, d); // local midnight
+  return localDate.toLocaleDateString("es-CL", {
+    day: "2-digit",
+    month: "short",
+  });
+}
+
 /* =================================
    Iconos / Notificaciones
    ================================= */
 function BellIcon({ filled }) {
   return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" width="22" height="22" focusable="false">
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      width="22"
+      height="22"
+      focusable="false"
+    >
       <path
         d="M12 3a6 6 0 00-6 6v3.382l-.894 1.789A1 1 0 006 16h12a1 1 0 00.894-1.529L18 12.382V9a6 6 0 00-6-6z"
         fill={filled ? "currentColor" : "none"}
@@ -57,20 +82,32 @@ function BellIcon({ filled }) {
         strokeWidth="2"
         strokeLinejoin="round"
       />
-      <path d="M9 17a3 3 0 006 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path
+        d="M9 17a3 3 0 0 0 6 0"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }
 
 function LogoutIcon() {
   return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" width="22" height="22" focusable="false">
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      width="22"
+      height="22"
+      focusable="false"
+    >
       <path
         d="M10 17v1a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-6a2 2 0 0 0-2 2v1"
         fill="none"
         stroke="currentColor"
         strokeWidth="2"
         strokeLinecap="round"
+        strokeLinejoin="round"
       />
       <path
         d="M15 12H3m0 0 3-3m-3 3 3 3"
@@ -84,7 +121,16 @@ function LogoutIcon() {
   );
 }
 
-function NotificationTray({ open, onClose, notifications, onMarkAllRead, anchorRef, onAck, scope, onToggleScope }) {
+function NotificationTray({
+  open,
+  onClose,
+  notifications,
+  onMarkAllRead,
+  anchorRef,
+  onAck,
+  scope,
+  onToggleScope,
+}) {
   const trayRef = useRef(null);
 
   useEffect(() => {
@@ -107,7 +153,6 @@ function NotificationTray({ open, onClose, notifications, onMarkAllRead, anchorR
 
   if (!open) return null;
 
-  // Solo mostrar no leídas
   const items = notifications.filter((n) => n.unread);
 
   return (
@@ -129,18 +174,28 @@ function NotificationTray({ open, onClose, notifications, onMarkAllRead, anchorR
           <div className="notif-empty">Sin alertas 🎉</div>
         ) : (
           items.map((n) => (
-            <div key={n.id} className={`notif-item ${n.unread ? "unread" : ""}`} role="listitem" tabIndex={0}>
+            <div
+              key={n.id}
+              className={`notif-item ${n.unread ? "unread" : ""}`}
+              role="listitem"
+              tabIndex={0}
+            >
               <div className="notif-title">{n.title}</div>
               <div className="notif-body">{n.body}</div>
               <div className="notif-meta">
                 {n.time}
                 {scope === "all" && n.animal_id && (
-                  <span className="notif-tag" style={{ marginLeft: 8 }}>Animal: {n.animal_id}</span>
+                  <span className="notif-tag" style={{ marginLeft: 8 }}>
+                    Animal: {n.animal_id}
+                  </span>
                 )}
               </div>
               {n.unread && (
                 <div style={{ marginTop: 6 }}>
-                  <button className="secondary-btn" onClick={() => onAck(String(n.id))}>
+                  <button
+                    className="secondary-btn"
+                    onClick={() => onAck(String(n.id))}
+                  >
                     Reconocer
                   </button>
                 </div>
@@ -162,7 +217,14 @@ function NotificationTray({ open, onClose, notifications, onMarkAllRead, anchorR
 /* =================================
    Mapeo de comportamientos
    ================================= */
-const BEHAVIORS = ["Foraging", "Resting", "Locomotion", "Social", "Play", "Stereotypy"];
+const BEHAVIORS = [
+  "Foraging",
+  "Resting",
+  "Locomotion",
+  "Social",
+  "Play",
+  "Stereotypy",
+];
 const BEHAVIOR_COLORS = {
   Foraging: "#60a5fa",
   Resting: "#94a3b8",
@@ -174,7 +236,7 @@ const BEHAVIOR_COLORS = {
 const colorForBehavior = (b) => BEHAVIOR_COLORS[b] || "#64748b";
 
 /* =================================
-   Hooks: animales, alertas, comportamiento
+   Hooks
    ================================= */
 function useAnimals() {
   const [animals, setAnimals] = useState([]);
@@ -184,14 +246,13 @@ function useAnimals() {
   return animals;
 }
 
-// scope-aware alerts: pass an animalId to filter, or null/undefined to fetch all
 function useAlerts(animalIdOrNull) {
   const [notifications, setNotifications] = useState([]);
   const load = async () => {
     const params = animalIdOrNull ? { animal_id: animalIdOrNull } : undefined;
     const rows = await getJSON("/api/alerts", params);
     const mapped = rows.map((r) => ({
-      id: String(r.alert_id), // normalizar a string
+      id: String(r.alert_id),
       animal_id: r.animal_id ?? null,
       title: `${r.tipo} (${r.severidad})`,
       body: r.resumen || r.tipo,
@@ -215,7 +276,9 @@ function useCurrentBehavior(animalId) {
     let stop = false;
     async function load() {
       try {
-        const row = await getJSON("/api/behavior/current", { animal_id: animalId });
+        const row = await getJSON("/api/behavior/current", {
+          animal_id: animalId,
+        });
         if (!stop) setCur(row);
       } catch (_) {}
     }
@@ -226,163 +289,488 @@ function useCurrentBehavior(animalId) {
       clearInterval(t);
     };
   }, [animalId]);
-  return cur; // {behavior, confidence, ts}
+  return cur;
 }
 
 function useBehaviorTimeline(animalId, dateISO) {
   const [rows, setRows] = useState([]);
   useEffect(() => {
-    if (!animalId) return;
-    getJSON("/api/behavior/timeline", { animal_id: animalId, date: dateISO })
-      .then(setRows)
-      .catch(() => setRows([]));
+    if (!animalId) {
+      setRows([]);
+      return;
+    }
+    let stop = false;
+    async function load() {
+      try {
+        const data = await getJSON("/api/behavior/timeline", {
+          animal_id: animalId,
+          date: dateISO,
+        });
+        if (!stop) setRows(data);
+      } catch {
+        if (!stop) setRows([]);
+      }
+    }
+    load();
+    let t = null;
+    if (dateISO === todayISO) {
+      t = setInterval(load, 15000);
+    }
+    return () => {
+      stop = true;
+      if (t) clearInterval(t);
+    };
   }, [animalId, dateISO]);
-  // respaldo si el backend devuelve vacío
+
   if (!rows.length) {
-    const seed = (animalId || "seed").split("").reduce((a, c) => a + c.charCodeAt(0), 0);
+    const seed = (animalId || "seed")
+      .split("")
+      .reduce((a, c) => a + c.charCodeAt(0), 0);
     return Array.from({ length: 24 }, (_, h) => ({
       hour: h,
       behavior: BEHAVIORS[(seed + h) % BEHAVIORS.length],
     }));
   }
-  return rows; // [{hour, behavior}]
+  return rows;
 }
 
-/* =================================
-   Agregación y gráfico de % del día
-   ================================= */
-function useBehaviorPercentages(timeline) {
-  return useMemo(() => {
-    if (!timeline?.length) return [];
-    const total = timeline.length;
-    const counts = {};
-    for (const { behavior } of timeline) counts[behavior] = (counts[behavior] || 0) + 1;
-    return BEHAVIORS.map((b) => ({ behavior: b, pct: ((counts[b] || 0) / total) * 100 }));
-  }, [timeline]);
+function useBehaviorDayDistribution(animalId, dateISO) {
+  const [dist, setDist] = useState(null);
+  useEffect(() => {
+    if (!animalId) {
+      setDist(null);
+      return;
+    }
+    let stop = false;
+    async function load() {
+      try {
+        const data = await getJSON("/api/behavior/day_distribution", {
+          animal_id: animalId,
+          date: dateISO,
+        });
+        if (!stop) setDist(data);
+      } catch {
+        if (!stop) setDist(null);
+      }
+    }
+    load();
+    let t = null;
+    if (dateISO === todayISO) {
+      t = setInterval(load, 15000);
+    }
+    return () => {
+      stop = true;
+      if (t) clearInterval(t);
+    };
+  }, [animalId, dateISO]);
+  return dist;
 }
 
-function BehaviorPercentBarChart({ data, height = 180, width = 560, padding = 18 }) {
-  const maxPct = 100;
-  const n = data.length || 1;
-  const bw = (width - 2 * padding) / n;
-  const sy = (v) => {
-    const h = height - 2 * padding;
-    return height - padding - (v / maxPct) * h;
-  };
-  return (
-    <svg className="plot" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Porcentaje de comportamientos hoy">
-      <rect x="0" y="0" width={width} height={height} className="plot-bg" />
-      <g className="plot-axes">
-        <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} />
-        <line x1={padding} y1={padding} x2={padding} y2={height - padding} />
-      </g>
-      {data.map((d, i) => {
-        const x = padding + i * bw + 6;
-        const y = sy(d.pct);
-        const h = Math.max(1, height - padding - y);
-        const w = Math.max(8, bw - 12);
-        return (
-          <g key={d.behavior}>
-            <rect x={x} y={y} width={w} height={h} fill={colorForBehavior(d.behavior)} rx="6" />
-            <text x={x + w / 2} y={y - 6} textAnchor="middle" fontSize="10" fill="#cbd5e1">
-              {Math.round(d.pct)}%
-            </text>
-            <text x={x + w / 2} y={height - padding + 12} textAnchor="middle" fontSize="10" fill="#9aa3b2">
-              {d.behavior}
-            </text>
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
+function useDeviationHistory(animalId, baselinePctMap) {
+  const [history, setHistory] = useState([]);
+  
+  // Create a stable string key for the baseline object to use in dependencies
+  const baselineKey = JSON.stringify(baselinePctMap);
 
-/* =================================
-   Ayudas para “últimos 10 días”
-   ================================= */
-function dateISOdaysAgo(n) {
-  const d = new Date();
-  d.setDate(d.getDate() - n); // still local arithmetic
-  return new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(d);
-}
-
-function useDominantBehaviorLastDays(animalId, days = 10) {
-  const [rows, setRows] = useState([]); // [{date, behavior}]
-  const [loading, setLoading] = useState(false);
   useEffect(() => {
     if (!animalId) return;
-    setLoading(true);
-    const dates = Array.from({ length: days }, (_, i) => dateISOdaysAgo(days - 1 - i));
-    Promise.all(
-      dates.map((date) =>
-        getJSON("/api/behavior/timeline", { animal_id: animalId, date })
-          .then((hourly) => {
-            const counts = {};
-            for (const h of hourly || []) counts[h.behavior] = (counts[h.behavior] || 0) + 1;
-            if (!hourly?.length) {
-              const seed = (animalId + date).split("").reduce((a, c) => a + c.charCodeAt(0), 0);
-              const b = BEHAVIORS[seed % BEHAVIORS.length];
-              return { date, behavior: b };
-            }
-            const behavior = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
-            return { date, behavior };
-          })
-          .catch(() => {
-            const seed = (animalId + date).split("").reduce((a, c) => a + c.charCodeAt(0), 0);
-            return { date, behavior: BEHAVIORS[seed % BEHAVIORS.length] };
-          })
-      )
-    )
-      .then(setRows)
-      .finally(() => setLoading(false));
-  }, [animalId, days]);
-  return { rows, loading };
+    
+    // Generar últimos 7 días
+    const dates = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - (6 - i));
+      return {
+        iso: new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(d),
+        label: d.toLocaleDateString("es-CL", { weekday: "short", day: "numeric" }),
+      };
+    });
+
+    async function loadAll() {
+      try {
+        const promises = dates.map((d) =>
+          getJSON("/api/behavior/day_distribution", {
+            animal_id: animalId,
+            date: d.iso,
+          }).catch(() => null)
+        );
+        
+        const results = await Promise.all(promises);
+        
+        const processed = dates.map((d, i) => {
+          const dayData = results[i]?.behavior_percentages || {};
+          const dayDeviation = {};
+          BEHAVIORS.forEach((b) => {
+            const actual = dayData[b] || 0;
+            const base = baselinePctMap[b] || 0;
+            dayDeviation[b] = actual - base;
+          });
+          return { date: d.label, values: dayDeviation };
+        });
+        
+        setHistory(processed);
+      } catch (e) {
+        console.error("History load failed", e);
+      }
+    }
+    
+    loadAll();
+    
+    // Polling cada 15 segundos para mantener el "hoy" actualizado
+    const t = setInterval(loadAll, 15000);
+    
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [animalId, baselineKey]); // Use the stringified key to avoid loop
+
+  return history;
 }
 
-function LastDaysDominantStrip({ data }) {
-  // data: [{date, behavior}] en orden del más antiguo → más reciente
-  const cols = data.length || 1;
-  const gridStyle = { gridTemplateColumns: `repeat(${cols}, 1fr)` };
+/* =================================
+   Gráfico % día (Mejorado con Legend Izquierda)
+   ================================= */
+function BehaviorPercentBarChart({
+  data,
+  baseline,
+  height = 180,
+  width = 480, // Reduced from 560 to accommodate side legend
+  padding = 18,
+}) {
+  const maxPct = 100;
+  const topBuffer = 25;
+  const plotHeight = height - 2 * padding - topBuffer;
 
-  const fmt = (iso) => new Date(iso).toLocaleDateString("es-CL", { day: "2-digit", month: "short" }).replace(".", "");
+  const n = data.length || 1;
+  const bw = (width - 2 * padding) / n;
+
+  const sy = (v) => (height - padding) - (v / maxPct) * plotHeight;
+
+  const baselineMap = useMemo(() => {
+    if (!baseline) return {};
+    const m = {};
+    baseline.forEach((b) => (m[b.behavior] = b.pct));
+    return m;
+  }, [baseline]);
+
+  const hasAnyBaseline =
+    baseline && baseline.some((b) => typeof b.pct === "number" && b.pct > 0);
 
   return (
-    <div>
-      {/* fila de bloques coloreados */}
-      <div className="ribbon" style={gridStyle} aria-label="Comportamiento dominante por día (últimos 10)">
-        {data.map(({ date, behavior }) => (
-          <div
-            key={date}
-            className="ribbon-cell"
-            title={`${date} — ${behavior}`}
-            style={{ background: colorForBehavior(behavior), height: 36, borderRadius: 8 }}
-            aria-label={`${date}, ${behavior}`}
-          />
-        ))}
-      </div>
-
-      {/* fila de etiquetas de fecha, alineadas 1:1 */}
-      <div className="ribbon-labels" style={gridStyle} aria-hidden="true">
-        {data.map(({ date }) => (
-          <div key={`d-${date}`} className="ribbon-time" title={new Date(date).toLocaleDateString("es-CL")}>
-            {fmt(date)}
-          </div>
-        ))}
-      </div>
-
-      {/* leyenda opcional */}
-      <div className="ribbon-legend" style={{ marginTop: 8 }}>
-        <div className="legend-item">
-          <span className="legend-swatch" style={{ background: "#2b3240" }} />
-          <span className="legend-label">Del más antiguo al más reciente</span>
+    <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 24, justifyContent: 'center' }}>
+      
+      {/* 1. Left Side Legend (Baselines) */}
+      <div style={{ minWidth: 110 }}>
+        <div style={{ 
+          fontSize: '10px', 
+          textTransform: 'uppercase', 
+          color: '#64748b', 
+          fontWeight: 'bold', 
+          marginBottom: 12,
+          letterSpacing: '0.05em'
+        }}>
+          Baseline (Meta)
         </div>
+        
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', rowGap: 8, columnGap: 12 }}>
+          {baseline && baseline.map((b) => (
+            <div key={b.behavior} style={{ display: 'contents' }}>
+              <div style={{ display: 'flex', alignItems: 'center', fontSize: '11px', color: '#94a3b8' }}>
+                <span style={{ 
+                  width: 6, 
+                  height: 6, 
+                  borderRadius: '50%', 
+                  backgroundColor: colorForBehavior(b.behavior), 
+                  marginRight: 8 
+                }} />
+                {b.behavior}
+              </div>
+              <div style={{ fontSize: '11px', fontWeight: '600', color: '#e2e8f0', textAlign: 'right' }}>
+                {b.pct}%
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 2. The Chart */}
+      <div>
+        <svg className="plot" viewBox={`0 0 ${width} ${height}`} role="img" style={{ display: "block" }}>
+          <rect x="0" y="0" width={width} height={height} className="plot-bg" />
+          <g className="plot-axes">
+            <line
+              x1={padding} y1={height - padding}
+              x2={width - padding} y2={height - padding}
+            />
+            <line x1={padding} y1={padding} x2={padding} y2={height - padding} />
+          </g>
+          {data.map((d, i) => {
+            const x = padding + i * bw + 6;
+            const y = sy(d.pct);
+            const h = Math.max(1, height - padding - y);
+            const w = Math.max(8, bw - 12);
+            const basePct = baselineMap[d.behavior];
+            const hasBaseline = typeof basePct === "number" && basePct > 0;
+            const by = hasBaseline ? sy(basePct) : null;
+            const isTall = h > 25;
+            const textY = isTall ? y + 16 : y - 6;
+            const textColor = isTall ? "#ffffff" : "#cbd5e1";
+            const fontWeight = isTall ? "bold" : "normal";
+
+            return (
+              <g key={d.behavior}>
+                <rect
+                  x={x} y={y} width={w} height={h}
+                  fill={colorForBehavior(d.behavior)}
+                  rx="6"
+                />
+                {hasBaseline && (
+                  <line
+                    x1={x} x2={x + w} y1={by} y2={by}
+                    stroke="rgba(255,255,255,0.7)"
+                    strokeWidth="2" strokeDasharray="4 3"
+                  />
+                )}
+                <text
+                  x={x + w / 2} y={textY}
+                  textAnchor="middle" fontSize="10"
+                  fontWeight={fontWeight} fill={textColor}
+                  style={{ pointerEvents: "none", textShadow: isTall ? "0px 1px 2px rgba(0,0,0,0.4)" : "none" }}
+                >
+                  {Math.round(d.pct)}%
+                </text>
+                <text
+                  x={x + w / 2} y={height - padding + 12}
+                  textAnchor="middle" fontSize="10" fill="#9aa3b2"
+                >
+                  {d.behavior}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+        
+        {/* Simple legend below to explain dashed line */}
+        {hasAnyBaseline && (
+          <div className="ribbon-legend" style={{ marginTop: 8, justifyContent: 'flex-end', opacity: 0.7 }}>
+            <div className="legend-item">
+              <span
+                className="legend-swatch"
+                style={{ borderTop: "2px dashed #94a3b8", width: 24, marginRight: 6 }}
+              />
+              <span className="legend-label">Target en gráfico</span>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 /* =================================
-   Componentes de UI: chapa + cinta
+   Gráfico Historial (Single Behavior)
+   ================================= */
+function BehaviorHistoryChart({
+  data, // [{ date: "Lun 25", values: { Foraging: 10... } }]
+  selectedBehavior,
+  height = 240,
+  width = 560,
+  padding = 30,
+}) {
+  const [hoverIndex, setHoverIndex] = useState(null);
+
+  if (!data || data.length === 0 || !selectedBehavior) return null;
+
+  // Extraer valores solo del comportamiento seleccionado
+  const values = data.map((d) => d.values[selectedBehavior] || 0);
+
+  // Escala dinámica pero con un mínimo de +/- 5%
+  const maxAbsData = Math.max(...values.map(Math.abs));
+  const maxAbs = Math.max(5, maxAbsData * 1.2);
+
+  const plotW = width - 2 * padding;
+  const plotH = height - 2 * padding;
+
+  const sx = (i) => padding + (i * plotW) / (data.length - 1);
+  const sy = (v) => height - padding - ((v + maxAbs) / (2 * maxAbs)) * plotH;
+  const zeroY = sy(0);
+
+  const color = colorForBehavior(selectedBehavior);
+
+  // Generate path points
+  const points = data
+    .map((d, i) => `${sx(i)},${sy(d.values[selectedBehavior] || 0)}`)
+    .join(" ");
+
+  // Generate Area path (for fill effect)
+  const areaPoints = [
+    `${sx(0)},${zeroY}`,
+    points,
+    `${sx(data.length - 1)},${zeroY}`,
+  ].join(" ");
+
+  return (
+    <div style={{ position: "relative" }}>
+      <svg
+        className="plot"
+        viewBox={`0 0 ${width} ${height}`}
+        aria-label={`Tendencia de ${selectedBehavior}`}
+      >
+        <rect x="0" y="0" width={width} height={height} className="plot-bg" />
+
+        {/* --- Grid & Axes --- */}
+        <line
+          x1={padding}
+          y1={zeroY}
+          x2={width - padding}
+          y2={zeroY}
+          stroke="#475569"
+          strokeWidth="1"
+        />
+        <line
+          x1={padding}
+          y1={padding}
+          x2={padding}
+          y2={height - padding}
+          stroke="#334155"
+        />
+
+        {/* Y Axis Labels */}
+        <text
+          x={padding - 6}
+          y={padding + 4}
+          fill="#64748b"
+          fontSize="9"
+          textAnchor="end"
+        >
+          +{Math.round(maxAbs)}%
+        </text>
+        <text
+          x={padding - 6}
+          y={height - padding}
+          fill="#64748b"
+          fontSize="9"
+          textAnchor="end"
+        >
+          -{Math.round(maxAbs)}%
+        </text>
+        <text
+          x={padding - 6}
+          y={zeroY + 3}
+          fill="#94a3b8"
+          fontSize="9"
+          textAnchor="end"
+        >
+          0%
+        </text>
+
+        {/* X Axis Labels */}
+        {data.map((d, i) => (
+          <text
+            key={i}
+            x={sx(i)}
+            y={height - padding + 15}
+            fill="#94a3b8"
+            fontSize="10"
+            textAnchor="middle"
+          >
+            {d.date}
+          </text>
+        ))}
+
+        {/* --- Data Visualization --- */}
+
+        {/* Area Gradient Fill */}
+        <defs>
+          <linearGradient
+            id={`grad-${selectedBehavior}`}
+            x1="0"
+            y1="0"
+            x2="0"
+            y2="1"
+          >
+            <stop offset="0%" stopColor={color} stopOpacity="0.2" />
+            <stop offset="100%" stopColor={color} stopOpacity="0.05" />
+          </linearGradient>
+        </defs>
+        <polygon points={areaPoints} fill={`url(#grad-${selectedBehavior})`} />
+
+        {/* The Line */}
+        <polyline
+          points={points}
+          fill="none"
+          stroke={color}
+          strokeWidth="3"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+
+        {/* The Dots & Interaction */}
+        {data.map((d, i) => {
+          const val = d.values[selectedBehavior] || 0;
+          const cx = sx(i);
+          const cy = sy(val);
+          const isHovered = hoverIndex === i;
+
+          return (
+            <g key={i}>
+              <circle
+                cx={cx}
+                cy={cy}
+                r={isHovered ? 6 : 4}
+                fill="#1e293b"
+                stroke={color}
+                strokeWidth="2"
+                style={{ transition: "r 0.2s" }}
+              />
+              {/* Invisible Hit Target */}
+              <circle
+                cx={cx}
+                cy={cy}
+                r={12}
+                fill="transparent"
+                onMouseEnter={() => setHoverIndex(i)}
+                onMouseLeave={() => setHoverIndex(null)}
+                onClick={() => setHoverIndex(i)}
+                style={{ cursor: "pointer" }}
+              />
+              {/* Tooltip */}
+              {isHovered && (
+                <g
+                  transform={`translate(${cx}, ${cy - 12})`}
+                  style={{ pointerEvents: "none" }}
+                >
+                  <rect
+                    x="-20"
+                    y="-22"
+                    width="40"
+                    height="18"
+                    rx="4"
+                    fill="#0f172a"
+                    stroke={color}
+                    strokeWidth="1"
+                  />
+                  <text
+                    x="0"
+                    y="-10"
+                    textAnchor="middle"
+                    fill="#fff"
+                    fontSize="10"
+                    fontWeight="bold"
+                    dominantBaseline="middle"
+                  >
+                    {val > 0 ? `+${Math.round(val)}%` : `${Math.round(val)}%`}
+                  </text>
+                </g>
+              )}
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
+/* =================================
+   UI Helpers
    ================================= */
 function BehaviorBadge({ behavior, confidence }) {
   if (!behavior)
@@ -403,10 +791,8 @@ function BehaviorBadge({ behavior, confidence }) {
 function BehaviorRibbon({ timeline }) {
   const cols = timeline.length || 1;
   const gridStyle = { gridTemplateColumns: `repeat(${cols}, 1fr)` };
-
   return (
     <div>
-      {/* fila de cuadrados */}
       <div className="ribbon" style={gridStyle} aria-label="Comportamiento por hora">
         {timeline.map(({ hour, behavior }) => (
           <div
@@ -414,25 +800,23 @@ function BehaviorRibbon({ timeline }) {
             className="ribbon-cell"
             title={`Hora ${String(hour).padStart(2, "0")}:00 — ${behavior}`}
             style={{ background: colorForBehavior(behavior) }}
-            aria-label={`Hora ${hour}, ${behavior}`}
           />
         ))}
       </div>
-
-      {/* fila de etiquetas de hora */}
-      <div className="ribbon-labels" style={gridStyle} aria-hidden="true">
+      <div className="ribbon-labels" style={gridStyle}>
         {timeline.map(({ hour }) => (
           <div key={`t-${hour}`} className="ribbon-time">
             {String(hour).padStart(2, "0")}:00
           </div>
         ))}
       </div>
-
-      {/* leyenda */}
       <div className="ribbon-legend" style={{ marginTop: 8 }}>
         {BEHAVIORS.map((b) => (
           <div key={b} className="legend-item">
-            <span className="legend-swatch" style={{ background: colorForBehavior(b) }} />
+            <span
+              className="legend-swatch"
+              style={{ background: colorForBehavior(b) }}
+            />
             <span className="legend-label">{b}</span>
           </div>
         ))}
@@ -442,56 +826,57 @@ function BehaviorRibbon({ timeline }) {
 }
 
 /* =================================
-   App
+   App Principal
    ================================= */
 export default function App() {
-  // auth (para mostrar usuario y cerrar sesión)
   const { user, logout } = useAuth();
-
-  // Animales y selección
   const animals = useAnimals();
   const [selectedId, setSelectedId] = useState(null);
-  const selected = useMemo(() => animals.find((a) => a.animal_id === selectedId), [animals, selectedId]);
+  
+  const selected = useMemo(
+    () => animals.find((a) => a.animal_id === selectedId),
+    [animals, selectedId]
+  );
+  
   useEffect(() => {
     if (!selectedId && animals[0]) setSelectedId(animals[0].animal_id);
   }, [animals, selectedId]);
 
-  // Bandeja de alertas: ámbito (selected|all)
-  const [alertScope, setAlertScope] = useState("selected"); // "selected" | "all"
+  // Alertas
+  const [alertScope, setAlertScope] = useState("selected");
   const toggleScope = useCallback(() => {
     setAlertScope((s) => (s === "selected" ? "all" : "selected"));
   }, []);
 
-  // Alertas según el ámbito
-  const { notifications, setNotifications, reload: reloadAlerts } =
-    useAlerts(alertScope === "selected" ? selectedId : null);
+  const {
+    notifications,
+    setNotifications,
+    reload: reloadAlerts,
+  } = useAlerts(alertScope === "selected" ? selectedId : null);
 
   const unreadCount = notifications.filter((n) => n.unread).length;
   const [trayOpen, setTrayOpen] = useState(false);
   const bellRef = useRef(null);
 
-  // Marcar todo como leído (optimista + persistente; usa bulk si existe)
   const markAllRead = useCallback(async () => {
     const ids = notifications.filter((n) => n.unread).map((n) => String(n.id));
     if (!ids.length) return;
-
-    // Optimistic UI
     setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
-
     try {
-      // bulk endpoint disponible en el backend propuesto
       await postJSON("/api/alerts/ack/bulk", { ids });
     } finally {
-      await reloadAlerts(); // re-sync con backend
+      await reloadAlerts();
     }
   }, [notifications, setNotifications, reloadAlerts]);
 
   async function ackAlert(id) {
     try {
       const sid = String(id);
-      // Optimistic: ocultar inmediatamente
-      setNotifications((prev) => prev.map((n) => (String(n.id) === sid ? { ...n, unread: false } : n)));
-
+      setNotifications((prev) =>
+        prev.map((n) =>
+          String(n.id) === sid ? { ...n, unread: false } : n
+        )
+      );
       await postJSON(`/api/alerts/ack/${sid}`);
       await reloadAlerts();
     } catch (e) {
@@ -499,10 +884,9 @@ export default function App() {
     }
   }
 
-  // Navegación por teclado en la barra lateral
+  // Sidebar Key Nav
   const listRef = useRef(null);
-  const handleKeyDown = useCallback(
-    (e) => {
+  const handleKeyDown = useCallback((e) => {
       const idx = Math.max(0, animals.findIndex((i) => i.animal_id === selectedId));
       if (e.key === "ArrowDown") {
         e.preventDefault();
@@ -514,54 +898,64 @@ export default function App() {
         const prev = Math.max(idx - 1, 0);
         setSelectedId(animals[prev]?.animal_id);
         scrollItemIntoView(prev);
-      } else if (e.key === "Home") {
-        e.preventDefault();
-        if (animals[0]) {
-          setSelectedId(animals[0].animal_id);
-          scrollItemIntoView(0);
-        }
-      } else if (e.key === "End") {
-        e.preventDefault();
-        if (animals.length) {
-          setSelectedId(animals[animals.length - 1].animal_id);
-          scrollItemIntoView(animals.length - 1);
-        }
       }
-    },
-    [animals, selectedId]
+    }, [animals, selectedId]
   );
   const scrollItemIntoView = (index) => {
     const el = listRef.current?.querySelector(`[data-index="${index}"]`);
     el?.scrollIntoView({ block: "nearest" });
   };
-  useEffect(() => {
-    listRef.current?.focus();
-  }, [animals.length]);
 
-  // Datos de comportamiento
+  // --- DATOS DEL DASHBOARD ---
+
+  // 1. KPI
   const currentBehavior = useCurrentBehavior(selectedId);
-  const timeline = useBehaviorTimeline(selectedId, todayISO);
-  const behaviorPercents = useBehaviorPercentages(timeline);
+  const todayTimeline = useBehaviorTimeline(selectedId, todayISO);
 
-  // Panel conmutado: Hoy % vs Últimos 10 días
-  const [distViewIndex, setDistViewIndex] = useState(0); // 0=hoy %, 1=últimos 10
-  const distViews = ["today_pct", "last10_dom"];
-  const nextDistView = () => setDistViewIndex((i) => (i + 1) % distViews.length);
-  const prevDistView = () => setDistViewIndex((i) => (i - 1 + distViews.length) % distViews.length);
-  const { rows: last10, loading: last10Loading } = useDominantBehaviorLastDays(selectedId, 10);
+  // 2. Gráfico % Día (Bars)
+  const [chartOffset, setChartOffset] = useState(0);
+  const maxOffset = 9;
+  const totalOffsets = maxOffset + 1;
+  useEffect(() => setChartOffset(0), [selectedId]);
+
+  const dateISOdaysAgo = (n) => {
+    const d = new Date();
+    d.setDate(d.getDate() - n);
+    return new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(d);
+  };
+  const chartDateISO = useMemo(() => dateISOdaysAgo(chartOffset), [chartOffset]);
+  const dayDistribution = useBehaviorDayDistribution(selectedId, chartDateISO);
+  
+  const chartPercents = useMemo(() => {
+    if (!dayDistribution?.behavior_percentages) return BEHAVIORS.map((b) => ({ behavior: b, pct: 0 }));
+    const bp = dayDistribution.behavior_percentages;
+    return BEHAVIORS.map((b) => ({ behavior: b, pct: bp[b] || 0 }));
+  }, [dayDistribution]);
+
+  const baselinePercents = useMemo(() => {
+    const baseMap = selected?.baseline_behavior_pct || {};
+    return BEHAVIORS.map((b) => ({ behavior: b, pct: baseMap[b] ?? 0 }));
+  }, [selected]);
+
+  // 3. Gráfico Historial (Lines)
+  // FIX: Stabilize baselineRaw to prevent infinite fetches in useDeviationHistory
+  const baselineRaw = useMemo(() => selected?.baseline_behavior_pct || {}, [selected]);
+  const historyData = useDeviationHistory(selectedId, baselineRaw);
+  
+  // Estado para el selector del gráfico de historial
+  const [historyBehavior, setHistoryBehavior] = useState("Stereotypy"); // Default to critical behavior
+  // Reset behavior when animal changes? Maybe not necessary, but safe.
+  useEffect(() => setHistoryBehavior("Stereotypy"), [selectedId]);
+
+
+  // Helpers UI
+  const chartDateLabel = useMemo(() => labelFromISO(chartDateISO), [chartDateISO]);
+  const goOlderDay = () => setChartOffset((o) => (o + 1) % totalOffsets);
+  const goNewerDay = () => setChartOffset((o) => (o - 1 + totalOffsets) % totalOffsets);
 
   return (
     <div className="layout">
-      {/* Barra lateral */}
-      <aside
-        className="sidebar"
-        role="listbox"
-        aria-label="Animales"
-        aria-activedescendant={selectedId ? `animal-${selectedId}` : undefined}
-        tabIndex={0}
-        onKeyDown={handleKeyDown}
-        ref={listRef}
-      >
+      <aside className="sidebar" role="listbox" tabIndex={0} onKeyDown={handleKeyDown} ref={listRef}>
         {animals.map((a, idx) => {
           const isSelected = a.animal_id === selectedId;
           return (
@@ -581,39 +975,21 @@ export default function App() {
         })}
       </aside>
 
-      {/* Detalle */}
       <main className="detail">
         <header className="detail-header">
           <h1 className="detail-title">{selected?.nombre || "—"}</h1>
           <p className="detail-subtitle">{selected?.especie || ""}</p>
-
-          {/* Acciones de header: campana + logout (logout a la derecha) */}
           <div className="header-actions">
             {user && (
-              <span className="plot-subtitle" title={user?.username} style={{ whiteSpace: "nowrap" }}>
+              <span className="plot-subtitle" title={user?.username}>
                 {user?.full_name || user?.username}
               </span>
             )}
-
-            <button
-              className="icon-btn notif-bell"
-              aria-label={`Abrir alertas${unreadCount ? `, ${unreadCount} sin leer` : ""}`}
-              aria-haspopup="dialog"
-              aria-expanded={trayOpen}
-              onClick={() => setTrayOpen((v) => !v)}
-              ref={bellRef}
-              title="Alertas"
-            >
+            <button className="icon-btn notif-bell" onClick={() => setTrayOpen((v) => !v)} ref={bellRef}>
               <BellIcon filled={unreadCount > 0} />
-              {unreadCount > 0 && (
-                <span className="badge" aria-hidden="true">
-                  {unreadCount}
-                </span>
-              )}
+              {unreadCount > 0 && <span className="badge">{unreadCount}</span>}
             </button>
-
-            {/* Logout icon button (a la derecha de la campana) */}
-            <button className="icon-btn logout-btn" onClick={logout} aria-label="Cerrar sesión" title="Cerrar sesión">
+            <button className="icon-btn logout-btn" onClick={logout}>
               <LogoutIcon />
             </button>
           </div>
@@ -631,7 +1007,6 @@ export default function App() {
         />
 
         <section className="detail-body">
-          {/* Tarjetas de información */}
           <div className="detail-cards">
             <div className="card">
               <div className="card-label">ID del animal</div>
@@ -640,7 +1015,10 @@ export default function App() {
             <div className="card">
               <div className="card-label">Comportamiento actual</div>
               <div className="card-value">
-                <BehaviorBadge behavior={currentBehavior?.behavior} confidence={currentBehavior?.confidence} />
+                <BehaviorBadge
+                  behavior={currentBehavior?.behavior}
+                  confidence={currentBehavior?.confidence}
+                />
               </div>
             </div>
             <div className="card">
@@ -651,58 +1029,101 @@ export default function App() {
             </div>
           </div>
 
-          {/* Cinta diaria de comportamiento */}
+          {/* Cinta (Hoy) */}
           <div className="plot-panel" style={{ marginTop: 16 }}>
             <div className="plot-header">
               <div>
                 <div className="plot-title">Comportamiento de hoy</div>
-                <div className="plot-subtitle">Comportamiento dominante por hora</div>
+                <div className="plot-subtitle">Dominante por hora</div>
               </div>
             </div>
             <div className="p-4">
-              <BehaviorRibbon timeline={timeline} />
+              <BehaviorRibbon timeline={todayTimeline} />
             </div>
           </div>
 
-          {/* Panel conmutado: Hoy % vs Últimos 10 días */}
+          {/* Bar Chart (Day Distribution) */}
           <div className="plot-panel" style={{ marginTop: 16 }}>
             <div className="plot-header">
               <div>
-                <div className="plot-title">
-                  {distViewIndex === 0 ? "% del día en cada comportamiento (hoy)" : "Comportamiento dominante (últimos 10 días)"}
-                </div>
-                <div className="plot-subtitle">
-                  {distViewIndex === 0
-                    ? "Basado en el comportamiento dominante por hora"
-                    : "Un bloque coloreado por día — del más antiguo al más reciente"}
-                </div>
+                <div className="plot-title">% del día (Vs Baseline)</div>
+                <div className="plot-subtitle">{chartOffset === 0 ? "Hoy" : `Día: ${chartDateLabel}`}</div>
               </div>
-
               <div className="plot-switch">
-                <button className="arrow-btn" aria-label="Vista anterior" title="Anterior (←)" onClick={prevDistView}>
-                  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-                    <path d="M15 19l-7-7 7-7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                <button className="arrow-btn" onClick={goOlderDay}>
+                  <svg viewBox="0 0 24 24" width="18" height="18">
+                    <path d="M15 19l-7-7 7-7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
                 </button>
-                <div className="plot-switch-label">{distViewIndex === 0 ? "Hoy %" : "Últimos 10 días"}</div>
-                <button className="arrow-btn" aria-label="Siguiente vista" title="Siguiente (→)" onClick={nextDistView}>
-                  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-                    <path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                <div className="plot-switch-label">{chartDateLabel}</div>
+                <button className="arrow-btn" onClick={goNewerDay}>
+                  <svg viewBox="0 0 24 24" width="18" height="18">
+                    <path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
                 </button>
+              </div>
+            </div>
+            <div className="p-4">
+              {selectedId ? (
+                <BehaviorPercentBarChart
+                  data={chartPercents}
+                  baseline={baselinePercents}
+                />
+              ) : (
+                <div className="plot-subtitle">Selecciona un animal...</div>
+              )}
+            </div>
+          </div>
+
+          {/* Line Chart (History Deviation) */}
+          <div className="plot-panel" style={{ marginTop: 16 }}>
+            <div className="plot-header">
+              <div>
+                <div className="plot-title">Historial de Desviación</div>
+                <div className="plot-subtitle">Variación respecto al baseline (7 días)</div>
+              </div>
+              
+              {/* SELECTOR DE COMPORTAMIENTO PARA EL CHART */}
+              <div className="plot-actions" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', maxWidth: '50%' }}>
+                {BEHAVIORS.map(b => {
+                   const isActive = historyBehavior === b;
+                   const baseColor = colorForBehavior(b);
+                   return (
+                     <button
+                       key={b}
+                       onClick={() => setHistoryBehavior(b)}
+                       style={{
+                         background: isActive ? baseColor : 'transparent',
+                         color: isActive ? '#fff' : '#94a3b8',
+                         border: `1px solid ${isActive ? baseColor : '#334155'}`,
+                         padding: '2px 8px',
+                         borderRadius: '12px',
+                         fontSize: '10px',
+                         cursor: 'pointer',
+                         transition: 'all 0.2s'
+                       }}
+                     >
+                       {b}
+                     </button>
+                   )
+                })}
               </div>
             </div>
 
             <div className="p-4">
-              {distViewIndex === 0 ? (
-                <BehaviorPercentBarChart data={behaviorPercents} />
-              ) : last10Loading ? (
-                <div className="plot-subtitle">Cargando…</div>
+              {selectedId && historyData.length > 0 ? (
+                <BehaviorHistoryChart 
+                  data={historyData} 
+                  selectedBehavior={historyBehavior}
+                />
               ) : (
-                <LastDaysDominantStrip data={last10} />
+                <div className="plot-subtitle">
+                  {selectedId ? "Cargando historial..." : "Selecciona un animal..."}
+                </div>
               )}
             </div>
           </div>
+
         </section>
       </main>
     </div>
