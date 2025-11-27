@@ -8,10 +8,16 @@ from pydantic import BaseModel
 from zoneinfo import ZoneInfo
 from sqlalchemy.orm import Session
 
+from fastapi.responses import StreamingResponse
+from fpdf import FPDF
+import io
+
 import schemas
 import models
 from database import get_db
 from auth_routes import get_current_user
+
+from datetime import timezone
 
 router = APIRouter(tags=["zoo"])
 
@@ -47,6 +53,30 @@ BEHAVIORS = ["Foraging", "Resting", "Locomotion", "Social", "Play", "Stereotypy"
 
 class AckBulkBody(BaseModel):
     ids: List[str]
+
+
+
+
+# =========================================================
+# PDF HELPER CLASS
+# =========================================================
+class WelfarePDF(FPDF):
+    def header(self):
+        # Logo or Title
+        self.set_font('Helvetica', 'B', 16)
+        self.cell(0, 10, 'Reporte Diario de Bienestar - Buin Zoo', border=False, align='C')
+        self.ln(15)
+
+    def chapter_title(self, label):
+        self.set_font('Helvetica', 'B', 12)
+        self.set_fill_color(200, 220, 255)  # Light blue
+        self.cell(0, 10, label, border=0, fill=True, align='L')
+        self.ln(10)
+
+    def chapter_body(self, text):
+        self.set_font('Helvetica', '', 10)
+        self.multi_cell(0, 8, text)
+        self.ln()
 
 
 # ------------------ Public API: animals ------------------
@@ -90,7 +120,7 @@ def behavior_current(
         "animal_id": animal_id,
         "behavior": ev.behavior,
         "confidence": round(ev.confidence or 0.0, 2),
-        "ts": ev.ts.isoformat(),
+        "ts": ev.ts.replace(tzinfo=timezone.utc).isoformat(),
     }
 
 
@@ -568,3 +598,132 @@ def list_reports(
             )
         )
     return results
+
+
+
+
+# =========================================================
+# NEW ENDPOINT
+# =========================================================
+@router.get("/reports/{report_id}/pdf")
+def download_report_pdf(
+    report_id: int,
+    db: Session = Depends(get_db),
+    current=Depends(get_current_user),
+):
+    """
+    Generates a PDF file for a specific welfare report and triggers a download.
+    """
+    # 1. Fetch the report
+    report = db.query(models.WelfareReport).filter(models.WelfareReport.id == report_id).first()
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    # 2. Parse details
+    data = json.loads(report.details_json) if report.details_json else {}
+    alerts = data.get("alerts", [])
+    behavior_counts = data.get("behavior_daily_counts", {})
+    
+    # Resolve Animal Name (using your ANIMALS constant list)
+    animal_name = "Desconocido"
+    species = "Desconocido"
+    for a in ANIMALS:
+        if a.animal_id == report.animal_id:
+            animal_name = a.nombre
+            species = a.especie
+            break
+
+    # 3. Create PDF
+    pdf = WelfarePDF()
+    pdf.add_page()
+
+    # --- INFO SECTION ---
+    pdf.set_font('Helvetica', '', 11)
+    pdf.cell(0, 8, f"ID Reporte: #{report.id}   |   Generado el: {report.generated_at.strftime('%Y-%m-%d %H:%M')}", ln=True)
+    pdf.cell(0, 8, f"Animal: {animal_name} ({species})", ln=True)
+    pdf.cell(0, 8, f"Fecha del Reporte: {report.period_start.strftime('%Y-%m-%d')}", ln=True)
+    pdf.ln(10)
+
+    # --- SUMMARY SECTION ---
+    pdf.chapter_title(f"Resumen General")
+    total_events = sum(behavior_counts.values())
+    alert_count = len(alerts)
+    
+    summary_text = (
+        f"Durante este periodo se registraron un total de {total_events} eventos de comportamiento. "
+        f"El sistema detectó {alert_count} alertas que requieren atención."
+    )
+    pdf.chapter_body(summary_text)
+
+    # --- BEHAVIOR STATS ---
+    pdf.chapter_title("Distribución de Comportamiento (Top Actividades)")
+    if total_events > 0:
+        pdf.set_font('Helvetica', 'B', 10)
+        # Table Header
+        pdf.cell(80, 8, "Comportamiento", border=1)
+        pdf.cell(40, 8, "Eventos", border=1)
+        pdf.cell(40, 8, "Porcentaje", border=1, ln=True)
+        
+        pdf.set_font('Helvetica', '', 10)
+        # Sort behaviors by frequency
+        sorted_behaviors = sorted(behavior_counts.items(), key=lambda item: item[1], reverse=True)
+        
+        for behavior, count in sorted_behaviors:
+            pct = (count / total_events) * 100
+            pdf.cell(80, 8, behavior, border=1)
+            pdf.cell(40, 8, str(count), border=1)
+            pdf.cell(40, 8, f"{pct:.1f}%", border=1, ln=True)
+    else:
+        pdf.chapter_body("No hay datos de comportamiento registrados para este día.")
+    
+    pdf.ln(10)
+
+    # --- ALERTS SECTION ---
+    pdf.chapter_title(f"Detalle de Alertas ({alert_count})")
+    
+    if alerts:
+        # Table Header
+        pdf.set_font('Helvetica', 'B', 9)
+        pdf.set_fill_color(240, 240, 240)
+        pdf.cell(40, 8, "Hora", border=1, fill=True)
+        pdf.cell(40, 8, "Tipo", border=1, fill=True)
+        pdf.cell(30, 8, "Severidad", border=1, fill=True)
+        pdf.cell(80, 8, "Detalle", border=1, fill=True, ln=True)
+        
+        pdf.set_font('Helvetica', '', 8)
+        for alert in alerts:
+            # Parse timestamp if exists
+            ts_str = alert.get("ts", "")
+            time_str = "N/A"
+            if ts_str:
+                try:
+                    # Simple slice to get HH:MM from ISO string
+                    dt = datetime.fromisoformat(ts_str)
+                    time_str = dt.strftime("%H:%M")
+                except:
+                    pass
+
+            pdf.cell(40, 8, time_str, border=1)
+            pdf.cell(40, 8, alert.get("tipo", "General"), border=1)
+            
+            # Color code severity slightly?
+            severity = alert.get("severidad", "media")
+            pdf.cell(30, 8, severity.upper(), border=1)
+            
+            # Truncate summary if too long for the cell
+            summary = alert.get("resumen", "")[:50]
+            pdf.cell(80, 8, summary, border=1, ln=True)
+    else:
+        pdf.chapter_body("No se detectaron alertas durante este periodo. El animal se encuentra estable.")
+
+    # 4. Return as a stream
+    pdf_bytes = pdf.output()
+    buffer = io.BytesIO(pdf_bytes)
+    
+    filename = f"Reporte_{animal_name}_{report.period_start.strftime('%Y%m%d')}.pdf"
+    
+    return StreamingResponse(
+        buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )

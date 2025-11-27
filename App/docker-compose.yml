@@ -1,0 +1,36 @@
+services:
+  # Service 1: PostgreSQL DB
+  db:
+    image: postgres:16
+    container_name: buinzoo-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: buinzoo
+      POSTGRES_PASSWORD: buinzoo_password
+      POSTGRES_DB: buinzoo
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # Service 2: FastAPI backend
+  web:
+    build:
+      context: ./back          # 👈 important: build from back/ folder
+      dockerfile: Dockerfile
+    container_name: zoo_backend
+    restart: always
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    environment:
+      POSTGRES_HOST: db        # 👈 hostname of the db service
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: buinzoo
+      POSTGRES_PASSWORD: buinzoo_password
+      POSTGRES_DB: buinzoo
+      SECRET_KEY: super_secret_dev_key_change_in_prod
+
+volumes:
+  postgres_data:

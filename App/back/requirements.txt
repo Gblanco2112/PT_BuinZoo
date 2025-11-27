@@ -1,3 +1,12 @@
-fastapi==0.115.2
-uvicorn[standard]==0.30.6
-pydantic==2.9.2
+fastapi
+uvicorn[standard]
+sqlalchemy
+psycopg2-binary
+python-multipart
+python-jose
+passlib[bcrypt]
+python-dotenv
+email-validator
+bcrypt==4.0.1    
+fpdf2
+
