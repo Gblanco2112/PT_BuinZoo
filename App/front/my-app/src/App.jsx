@@ -11,6 +11,15 @@ const todayISO = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(
   new Date()
 ); // YYYY-MM-DD
 
+
+// Add this near the top of App.jsx, after labelFromISO function
+
+function downloadPDF(reportId) {
+  // Opens the PDF download endpoint in a new tab
+  // The browser automatically attaches the cookies for authentication
+  window.open(`${API_BASE}/api/reports/${reportId}/pdf`, '_blank');
+}
+
 async function getJSON(path, params) {
   const url = new URL(API_BASE + path);
   if (params)
@@ -825,6 +834,137 @@ function BehaviorRibbon({ timeline }) {
   );
 }
 
+
+
+/* =================================
+   Panel de Reportes (Default: Hoy)
+   ================================= */
+function ReportsPanel({ animalId }) {
+  const [reports, setReports] = useState([]);
+  const [loading, setLoading] = useState(false);
+  
+  // CHANGE 1: Initialize with Today's date instead of ""
+  // 'en-CA' is a trick to get YYYY-MM-DD format using the local timezone
+  const [filterDate, setFilterDate] = useState(
+    new Date().toLocaleDateString('en-CA')
+  );
+
+  // Load ALL history when animal changes
+  useEffect(() => {
+    if (!animalId) return;
+    setLoading(true);
+    getJSON("/api/reports", { animal_id: animalId })
+      .then(setReports)
+      .catch((err) => console.error("Error loading reports:", err))
+      .finally(() => setLoading(false));
+  }, [animalId]);
+
+  // Filter logic
+  const displayedReports = useMemo(() => {
+    if (!filterDate) return reports;
+    return reports.filter(r => r.period_start.startsWith(filterDate));
+  }, [reports, filterDate]);
+
+  if (!animalId) return null;
+
+  return (
+    <div className="plot-panel" style={{ marginTop: 16 }}>
+      <div className="plot-header">
+        <div>
+          <div className="plot-title">Reportes de Bienestar</div>
+          <div className="plot-subtitle">
+            {filterDate 
+              ? `Viendo reporte del ${new Date(filterDate).toLocaleDateString('es-CL', { timeZone: 'UTC' })}`
+              : "Historial completo"}
+          </div>
+        </div>
+        
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* Button to clear filter and show everything */}
+          {filterDate ? (
+             <button 
+               onClick={() => setFilterDate("")}
+               className="link-btn"
+               style={{ fontSize: 11, color: '#94a3b8' }}
+             >
+               Ver historial completo
+             </button>
+          ) : (
+             <span style={{ fontSize: 11, color: '#64748b' }}>Mostrando todo</span>
+          )}
+
+          <input 
+            type="date"
+            value={filterDate}
+            max={new Date().toLocaleDateString('en-CA')}
+            onChange={(e) => setFilterDate(e.target.value)}
+            style={{
+              background: '#1e293b',
+              border: '1px solid #334155',
+              color: '#cbd5e1',
+              padding: '4px 8px',
+              borderRadius: '6px',
+              fontSize: '11px',
+              fontFamily: 'inherit',
+              colorScheme: 'dark',
+              cursor: 'pointer'
+            }}
+          />
+        </div>
+      </div>
+
+      <div className="p-4">
+        {loading && reports.length === 0 ? (
+          <div className="plot-subtitle">Cargando historial...</div>
+        ) : displayedReports.length === 0 ? (
+          <div className="plot-subtitle" style={{ textAlign: 'center', padding: 20 }}>
+            {filterDate 
+              ? `No existe un reporte generado para el ${filterDate}.` 
+              : "No hay reportes disponibles."}
+          </div>
+        ) : (
+          <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, color: '#cbd5e1' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid #334155', color: '#94a3b8', textAlign: 'left' }}>
+                  <th style={{ padding: 8 }}>Fecha</th>
+                  <th style={{ padding: 8 }}>Estado</th>
+                  <th style={{ padding: 8, textAlign: 'right' }}>Documento</th>
+                </tr>
+              </thead>
+              <tbody>
+                {displayedReports.map(r => (
+                  <tr key={r.id} style={{ borderBottom: '1px solid #1e293b' }}>
+                    <td style={{ padding: 8 }}>
+                      {new Date(r.period_start).toLocaleDateString('es-CL', { timeZone: 'UTC' })}
+                    </td>
+                    <td style={{ padding: 8 }}>
+                      {r.alerts_count > 0 ? (
+                        <span style={{ color: '#ef4444', fontWeight: 'bold' }}>{r.alerts_count} Alertas</span>
+                      ) : (
+                        <span style={{ color: '#34d399' }}>Normal</span>
+                      )}
+                    </td>
+                    <td style={{ padding: 8, textAlign: 'right' }}>
+                      <button
+                        onClick={() => downloadPDF(r.id)}
+                        className="link-btn"
+                        style={{ color: '#60a5fa', fontWeight: 500 }}
+                      >
+                        Descargar PDF
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* =================================
    App Principal
    ================================= */
@@ -859,15 +999,25 @@ export default function App() {
   const bellRef = useRef(null);
 
   const markAllRead = useCallback(async () => {
-    const ids = notifications.filter((n) => n.unread).map((n) => String(n.id));
-    if (!ids.length) return;
-    setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
-    try {
-      await postJSON("/api/alerts/ack/bulk", { ids });
-    } finally {
-      await reloadAlerts();
-    }
-  }, [notifications, setNotifications, reloadAlerts]);
+      // 1. Get IDs of visible unread items
+      const ids = notifications.filter((n) => n.unread).map((n) => String(n.id));
+      if (!ids.length) return;
+
+      // 2. Optimistic Update (Clear UI immediately)
+      setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
+
+      try {
+        // 3. Send to Backend
+        const res = await postJSON("/api/alerts/ack/bulk", { ids });
+        console.log("Backend Ack Result:", res); // Check browser console for this!
+      } catch (err) {
+        console.error("Ack failed", err);
+        // Optional: Revert optimistic update here if needed
+      } finally {
+        // 4. Force Reload from Server to ensure sync
+        await reloadAlerts();
+      }
+    }, [notifications, setNotifications, reloadAlerts]);
 
   async function ackAlert(id) {
     try {
@@ -914,7 +1064,7 @@ export default function App() {
 
   // 2. Gráfico % Día (Bars)
   const [chartOffset, setChartOffset] = useState(0);
-  const maxOffset = 9;
+  const maxOffset = 6;
   const totalOffsets = maxOffset + 1;
   useEffect(() => setChartOffset(0), [selectedId]);
 
@@ -1042,6 +1192,7 @@ export default function App() {
             </div>
           </div>
 
+
           {/* Bar Chart (Day Distribution) */}
           <div className="plot-panel" style={{ marginTop: 16 }}>
             <div className="plot-header">
@@ -1123,6 +1274,9 @@ export default function App() {
               )}
             </div>
           </div>
+
+          {/* Reports History Panel */}
+          <ReportsPanel animalId={selectedId} />
 
         </section>
       </main>

@@ -358,6 +358,35 @@ def metrics(
     }
 
 
+@router.post("/alerts/ack/bulk")
+def ack_bulk(
+    body: AckBulkBody,
+    db: Session = Depends(get_db),
+    current=Depends(get_current_user),
+):
+    """
+    Bulk acknowledge alerts. Includes debug prints to verify ID matching.
+    """
+    if not body.ids:
+        return {"status": "ok", "acked_count": 0}
+
+    # Debug: Print what we received
+    print(f"[ACK-BULK] Request to close {len(body.ids)} alerts.")
+    
+    # Perform the update
+    updated_count = (
+        db.query(models.Alert)
+        .filter(models.Alert.alert_id.in_(body.ids))
+        .update({"estado": "closed"}, synchronize_session=False)
+    )
+    
+    db.commit()
+    
+    print(f"[ACK-BULK] Database updated {updated_count} rows.")
+    
+    return {"status": "ok", "acked_count": updated_count}
+
+
 @router.get("/alerts")
 def list_alerts(
     animal_id: Optional[str] = None,
@@ -380,7 +409,7 @@ def list_alerts(
             "severidad": row.severidad,
             "resumen": row.resumen,
             "estado": row.estado,
-            "ts": row.ts.isoformat(),
+            "ts": row.ts.replace(tzinfo=timezone.utc).isoformat() if row.ts else None,
         }
         for row in rows
     ]
@@ -401,28 +430,6 @@ def ack_one(
     alert.estado = "closed"
     db.commit()
     return {"status": "ok", "alert_id": alert_id}
-
-
-@router.post("/alerts/ack/bulk")
-def ack_bulk(
-    body: AckBulkBody,
-    db: Session = Depends(get_db),
-    current=Depends(get_current_user),
-):
-    """
-    Bulk acknowledge alerts, used by the frontend to clear all notifications.
-    """
-    if not body.ids:
-        return {"status": "ok", "acked_count": 0}
-
-    (
-        db.query(models.Alert)
-        .filter(models.Alert.alert_id.in_(body.ids))
-        .update({"estado": "closed"}, synchronize_session=False)
-    )
-    db.commit()
-    return {"status": "ok", "acked_count": len(body.ids)}
-
 
 # ------------------ Welfare reports (backend-only generation) ------------------
 
@@ -612,7 +619,7 @@ def download_report_pdf(
     current=Depends(get_current_user),
 ):
     """
-    Generates a PDF file for a specific welfare report and triggers a download.
+    Generates a PDF file with dynamic row heights for detailed alerts.
     """
     # 1. Fetch the report
     report = db.query(models.WelfareReport).filter(models.WelfareReport.id == report_id).first()
@@ -624,7 +631,7 @@ def download_report_pdf(
     alerts = data.get("alerts", [])
     behavior_counts = data.get("behavior_daily_counts", {})
     
-    # Resolve Animal Name (using your ANIMALS constant list)
+    # Resolve Animal Name
     animal_name = "Desconocido"
     species = "Desconocido"
     for a in ANIMALS:
@@ -665,7 +672,6 @@ def download_report_pdf(
         pdf.cell(40, 8, "Porcentaje", border=1, ln=True)
         
         pdf.set_font('Helvetica', '', 10)
-        # Sort behaviors by frequency
         sorted_behaviors = sorted(behavior_counts.items(), key=lambda item: item[1], reverse=True)
         
         for behavior, count in sorted_behaviors:
@@ -678,41 +684,69 @@ def download_report_pdf(
     
     pdf.ln(10)
 
-    # --- ALERTS SECTION ---
+    # --- ALERTS SECTION (UPDATED FOR WRAPPING TEXT) ---
     pdf.chapter_title(f"Detalle de Alertas ({alert_count})")
     
     if alerts:
+        # Define Column Widths (Total ~190mm)
+        w_time = 25
+        w_type = 50
+        w_sev = 25
+        w_desc = 90
+
         # Table Header
         pdf.set_font('Helvetica', 'B', 9)
         pdf.set_fill_color(240, 240, 240)
-        pdf.cell(40, 8, "Hora", border=1, fill=True)
-        pdf.cell(40, 8, "Tipo", border=1, fill=True)
-        pdf.cell(30, 8, "Severidad", border=1, fill=True)
-        pdf.cell(80, 8, "Detalle", border=1, fill=True, ln=True)
+        pdf.cell(w_time, 8, "Hora", border=1, fill=True)
+        pdf.cell(w_type, 8, "Tipo", border=1, fill=True)
+        pdf.cell(w_sev, 8, "Severidad", border=1, fill=True)
+        pdf.cell(w_desc, 8, "Detalle", border=1, fill=True, ln=True)
         
-        pdf.set_font('Helvetica', '', 8)
+        pdf.set_font('Helvetica', '', 8) # Smaller font to fit more text
+        
         for alert in alerts:
-            # Parse timestamp if exists
+            # Parse timestamp
             ts_str = alert.get("ts", "")
             time_str = "N/A"
             if ts_str:
                 try:
-                    # Simple slice to get HH:MM from ISO string
                     dt = datetime.fromisoformat(ts_str)
                     time_str = dt.strftime("%H:%M")
                 except:
                     pass
 
-            pdf.cell(40, 8, time_str, border=1)
-            pdf.cell(40, 8, alert.get("tipo", "General"), border=1)
+            tipo = alert.get("tipo", "General")
+            severity = alert.get("severidad", "media").upper()
+            # NO TRUNCATION HERE: We take the full string
+            summary = alert.get("resumen", "")
+
+            # --- DYNAMIC ROW HEIGHT LOGIC ---
+            # 1. Save current position
+            x_start = pdf.get_x()
+            y_start = pdf.get_y()
+
+            # 2. Print the 'Detail' column using MultiCell first to see how tall it gets
+            # We move the cursor to the right to print the last column
+            pdf.set_xy(x_start + w_time + w_type + w_sev, y_start)
+            pdf.multi_cell(w_desc, 8, summary, border=1, align='L')
             
-            # Color code severity slightly?
-            severity = alert.get("severidad", "media")
-            pdf.cell(30, 8, severity.upper(), border=1)
-            
-            # Truncate summary if too long for the cell
-            summary = alert.get("resumen", "")[:50]
-            pdf.cell(80, 8, summary, border=1, ln=True)
+            # 3. Calculate the height of the row based on where the cursor ended up
+            y_end = pdf.get_y()
+            row_height = y_end - y_start
+
+            # 4. Go back and print the other columns with that calculated height
+            pdf.set_xy(x_start, y_start)
+            pdf.cell(w_time, row_height, time_str, border=1)
+            pdf.cell(w_type, row_height, tipo, border=1)
+            pdf.cell(w_sev, row_height, severity, border=1)
+
+            # 5. Move cursor to the next line (y_end) for the next iteration
+            pdf.set_xy(x_start, y_end)
+
+            # Page break check (simple)
+            if pdf.get_y() > 270: 
+                pdf.add_page()
+
     else:
         pdf.chapter_body("No se detectaron alertas durante este periodo. El animal se encuentra estable.")
 
@@ -727,3 +761,200 @@ def download_report_pdf(
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'}
     )
+
+
+
+# =========================================================
+# NEW: INTELLIGENT ALERT LOGIC
+# =========================================================
+
+def check_and_create_alerts(db: Session, animal_id: str, behavior: str, ts: datetime):
+    """
+    Calculates accumulated percentage based on TIME ELAPSED vs SAMPLING PERIOD.
+    This ensures that if data is missing, it reflects in the stats.
+    """
+    
+    # --- CONFIGURATION ---
+    DEFAULT_TOLERANCE = 5.0
+    SAMPLING_PERIOD_SECONDS = 300  # 5 Minutes (Must match your pipeline/simulation)
+    MIN_HOURS_TO_ANALYZE = 1       # Don't alert in the first hour of the day
+
+    # 1. Get Baseline
+    baseline_map = BASELINE_BEHAVIOR_PCT["default"]
+    baseline_val = baseline_map.get(behavior, 0.0)
+
+    # 2. Calculate Theoretical Total Samples (Perfect Pipeline)
+    # How many samples SHOULD we have received since midnight?
+    today_midnight = datetime.combine(ts.date(), time.min, tzinfo=TZ)
+    seconds_since_midnight = (ts - today_midnight).total_seconds()
+    
+    # Avoid division by zero at 00:00:00
+    if seconds_since_midnight < (MIN_HOURS_TO_ANALYZE * 3600):
+        return None
+
+    theoretical_total_samples = seconds_since_midnight / SAMPLING_PERIOD_SECONDS
+
+    # 3. Get Actual Count of Specific Behavior
+    behavior_events_today = (
+        db.query(models.BehaviorEvent)
+        .filter(
+            models.BehaviorEvent.animal_id == animal_id,
+            models.BehaviorEvent.behavior == behavior,
+            models.BehaviorEvent.ts >= today_midnight,
+            models.BehaviorEvent.ts <= ts
+        )
+        .count()
+    )
+
+    # 4. Calculate Percentage against THEORETICAL Time
+    # This represents: "What % of the elapsed time today was spent doing X?"
+    current_pct = (behavior_events_today / theoretical_total_samples) * 100.0
+    
+    # Calculate Math Deviation
+    deviation = current_pct - baseline_val
+    dev_str = f"{deviation:+.1f}%"
+
+    # 5. Analyze Deviation (With Logic Gates)
+    alert_type = None
+    severity = "media"
+    resumen = ""
+    
+    hour = ts.hour
+
+    # --- STEREOTYPY (Critical if high) ---
+    if behavior == "Stereotypy":
+        threshold = baseline_val + DEFAULT_TOLERANCE
+        if current_pct > threshold:
+            alert_type = "comportamiento_anormal"
+            severity = "alta"
+            resumen = (
+                f"Estereotipia crítica ({current_pct:.1f}%). "
+                f"Supera el baseline ({baseline_val}%) en {dev_str}."
+            )
+
+    # --- FORAGING (Critical if low) ---
+    elif behavior == "Foraging":
+        # Check only after 4 PM to allow time for feeding
+        if hour >= 16:
+            threshold = max(0, baseline_val - DEFAULT_TOLERANCE)
+            if current_pct < threshold:
+                alert_type = "poca_alimentacion"
+                severity = "alta"
+                resumen = (
+                    f"Déficit alimentario. Acumulado: {current_pct:.1f}% "
+                    f"(Meta: {baseline_val}%). Desviación: {dev_str}"
+                )
+
+    # --- RESTING (Check both High and Low) ---
+    elif behavior == "Resting":
+        upper_limit = baseline_val + 15.0
+        lower_limit = max(0, baseline_val - 15.0)
+        
+        # Lethargy check (after noon)
+        if current_pct > upper_limit and hour >= 12:
+            alert_type = "baja_actividad"
+            resumen = (
+                f"Letargo/Inactividad. Descanso actual: {current_pct:.1f}% "
+                f"(Normal: {baseline_val}%). Desviación: {dev_str}"
+            )
+        # Agitation check (after 10 AM)
+        elif current_pct < lower_limit and hour >= 10:
+            alert_type = "agitacion"
+            resumen = (
+                f"Falta de descanso. Actual: {current_pct:.1f}% "
+                f"(Esperado: {baseline_val}%). Desviación: {dev_str}"
+            )
+
+    # --- LOCOMOTION (High is bad) ---
+    elif behavior == "Locomotion":
+        threshold = baseline_val + 10.0
+        if current_pct > threshold:
+            alert_type = "actividad_excesiva"
+            resumen = f"Hiperactividad detectada ({current_pct:.1f}%). Desviación: {dev_str}"
+
+    # --- SOCIAL (Low is bad) ---
+    elif behavior == "Social" and baseline_val > 2.0:
+        threshold = max(0, baseline_val - DEFAULT_TOLERANCE)
+        if current_pct < threshold:
+            alert_type = "aislamiento"
+            resumen = f"Aislamiento social ({current_pct:.1f}% vs {baseline_val}%). Desviación: {dev_str}"
+
+    # --- PLAY (Low is bad) ---
+    elif behavior == "Play" and baseline_val > 2.0:
+        threshold = max(0, baseline_val - DEFAULT_TOLERANCE)
+        if current_pct < threshold:
+            alert_type = "apatia"
+            resumen = f"Apatía/Falta de juego ({current_pct:.1f}% vs {baseline_val}%). Desviación: {dev_str}"
+
+    # 6. Save Alert (Anti-Spam)
+    if alert_type:
+        existing_alert = (
+            db.query(models.Alert)
+            .filter(
+                models.Alert.animal_id == animal_id,
+                models.Alert.tipo == alert_type,
+                models.Alert.estado == "open",
+                models.Alert.ts >= today_midnight
+            )
+            .first()
+        )
+
+        if existing_alert:
+            return None 
+
+        new_alert = models.Alert(
+            alert_id=f"{animal_id}-{ts.strftime('%Y%m%d-%H%M%S')}",
+            animal_id=animal_id,
+            tipo=alert_type,
+            severidad=severity,
+            resumen=resumen,
+            estado="open",
+            ts=ts
+        )
+        db.add(new_alert)
+        db.commit()
+        return new_alert
+
+    return None
+# =========================================================
+# NEW: INGESTION ENDPOINT (For the AI Pipeline)
+# =========================================================
+
+class EventIngest(BaseModel):
+    animal_id: str
+    behavior: str
+    confidence: float
+    ts: Optional[datetime] = None  # If null, use server time
+
+@router.post("/events", status_code=201)
+def ingest_event(
+    body: EventIngest,
+    db: Session = Depends(get_db),
+    # Optional: Require auth so random people don't post fake data
+    # current=Depends(get_current_user) 
+):
+    """
+    This is where your Python AI Script sends data.
+    JSON Body: { "animal_id": "a-001", "behavior": "Resting", "confidence": 0.95 }
+    """
+    # 1. Use provided timestamp or current server time
+    event_ts = body.ts or datetime.now(TZ)
+    
+    # 2. Save the Raw Event
+    event = models.BehaviorEvent(
+        animal_id=body.animal_id,
+        ts=event_ts,
+        behavior=body.behavior,
+        confidence=body.confidence
+    )
+    db.add(event)
+    db.commit()
+
+    # 3. Run the Intelligent Logic (The Brain)
+    alert = check_and_create_alerts(db, body.animal_id, body.behavior, event_ts)
+
+    return {
+        "status": "stored", 
+        "alert_generated": alert is not None,
+        "alert_type": alert.tipo if alert else None
+    }
