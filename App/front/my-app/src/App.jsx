@@ -5,7 +5,7 @@ import "./styles.css";
 /* =================================
    Ayudas de API
    ================================= */
-const API_BASE = "http://127.0.0.1:8000"; // ajusta si es necesario
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 const tz = "America/Santiago";
 const todayISO = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(
   new Date()
@@ -1102,6 +1102,9 @@ export default function App() {
   const chartDateLabel = useMemo(() => labelFromISO(chartDateISO), [chartDateISO]);
   const goOlderDay = () => setChartOffset((o) => (o + 1) % totalOffsets);
   const goNewerDay = () => setChartOffset((o) => (o - 1 + totalOffsets) % totalOffsets);
+
+
+  console.log("Current API BASE:", import.meta.env.VITE_API_BASE_URL || "Fallback used");
 
   return (
     <div className="layout">

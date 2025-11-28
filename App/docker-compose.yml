@@ -1,3 +1,5 @@
+version: "3.9"
+
 services:
   # Service 1: PostgreSQL DB
   db:
@@ -16,21 +18,37 @@ services:
   # Service 2: FastAPI backend
   web:
     build:
-      context: ./back          # 👈 important: build from back/ folder
+      context: ./back
       dockerfile: Dockerfile
     container_name: zoo_backend
     restart: always
-    ports:
-      - "8000:8000"
-    depends_on:
-      - db
     environment:
-      POSTGRES_HOST: db        # 👈 hostname of the db service
+      POSTGRES_HOST: db
       POSTGRES_PORT: 5432
       POSTGRES_USER: buinzoo
       POSTGRES_PASSWORD: buinzoo_password
       POSTGRES_DB: buinzoo
       SECRET_KEY: super_secret_dev_key_change_in_prod
+    depends_on:
+      - db
+    ports:
+      - "8000:8000"  # Expose backend on host port 8000
+
+  # Service 3: Frontend (React / Vite build served by Nginx)
+  frontend:
+    build:
+      context: ./front/my-app
+      dockerfile: Dockerfile
+      args:
+        # IMPORTANT: This tells React (in the BROWSER) where the backend is.
+        # Using 127.0.0.1 avoids IPv6 localhost issues.
+        VITE_API_BASE_URL: http://127.0.0.1:8000
+    container_name: zoo_frontend
+    restart: always
+    ports:
+      - "80:80"  # Access the app in browser at http://localhost
+    depends_on:
+      - web
 
 volumes:
   postgres_data:

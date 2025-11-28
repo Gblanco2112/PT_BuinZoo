@@ -25,12 +25,32 @@ import models
 # IMPORTAMOS LA FUNCIÓN DE REPORTES Y LA DE ALERTAS INTELIGENTES
 from zoo_routes import ANIMALS, BEHAVIORS, create_or_update_daily_report, check_and_create_alerts
 
+from auth import hash_password # Make sure you have the dependencies installed locally
+
 TZ = ZoneInfo("America/Santiago")
 
 # === Parámetros de simulación ===
 TS_SECONDS = 5 * 60             # periodo entre "ticks" en tiempo real
 DAYS_HISTORY = 7                # 7 Días de historial
 BACKFILL_EVENTS_PER_HOUR = 2    # cuántos eventos por hora al backfillear
+
+
+
+
+def ensure_admin_user(db):
+    user = db.query(models.User).filter(models.User.username == "vicente.florez@uc.cl").first()
+    if not user:
+        print("Creating Admin User...")
+        user = models.User(
+            username="vicente.florez@uc.cl",
+            email="vicente.florez@uc.cl",
+            hashed_password=hash_password("Vicente1234"),
+            full_name="Keeper",
+            scopes="keeper",
+        )
+        db.add(user)
+        db.commit()
+        print("Admin user created.")
 
 
 # -------------------------------------------------------------------

@@ -86,15 +86,24 @@ async def on_startup():
   asyncio.create_task(reports_background_loop())
 
 
-# CORS (dev). In prod, restrict to your real frontend domain and keep allow_credentials=True
-app.add_middleware(
-  CORSMiddleware,
-  allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
-  allow_credentials=True,
-  allow_methods=["*"],
-  allow_headers=["*"],
-)
+# main.py
 
+origins = [
+    "http://localhost:5173",    # Local Dev (npm run dev)
+    "http://127.0.0.1:5173",    # Local Dev IP
+    "http://localhost",         # Docker Frontend (Port 80) <--- NEW
+    "http://127.0.0.1",         # Docker Frontend IP <--- NEW
+    # If you access from another PC, add that IP too:
+    # "http://192.168.1.50",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/")
 def root():
