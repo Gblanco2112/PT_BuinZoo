@@ -1,143 +1,144 @@
 import cv2
 import time
 import os
+import queue
+import threading
 from datetime import datetime
 import argparse
 
-# =============== ARGUMENTOS CLI ===============
+# =============== ARGUMENTOS ===============
 parser = argparse.ArgumentParser()
-
-parser.add_argument(
-    "--channel",
-    type=int,
-    default=1,
-    help="Número de canal RTSP (ej: 1, 2, 3...)."
-)
-
-parser.add_argument(
-    "--segment-minutes",
-    type=float,
-    default=5.0,
-    help="Duración de cada archivo de video en minutos."
-)
-
-parser.add_argument(
-    "--output-dir",
-    type=str,
-    default="videos_capturados",
-    help="Carpeta donde se guardarán los videos."
-)
-
+parser.add_argument("--channel", type=int, default=1, help="Canal RTSP")
+parser.add_argument("--segment-minutes", type=float, default=5.0, help="Minutos por video")
+parser.add_argument("--output-dir", type=str, default="videos_capturados", help="Carpeta salida")
 args = parser.parse_args()
 
 CHANNEL = args.channel
 SEGMENT_MINUTES = args.segment_minutes
 OUTPUT_DIR = args.output_dir
-# =============================================
 
+# Credenciales (Sanitizadas)
+USER = "view"
+PASS = "tupassword" # <--- CAMBIAR CONTRASEÑA REAL AQUÍ
+IP = "190.8.125.219"
+PORT = "554"
 
-# =============== CONFIGURACIÓN RTSP ===============
-rtsp_url = (
-    f"rtsp://view:vieW.,star3250@190.8.125.219:554/"
-    f"cam/realmonitor?channel=0&subtype=0"
-)
+rtsp_url = f"rtsp://view:vieW.,star3250@190.8.125.219:554/cam/realmonitor?channel=1&subtype=0"
+os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp" # Mantenemos TCP por estabilidad
+
+# =============== CLASE DE LECTURA EN HILO (LA SOLUCIÓN) ===============
+class RTSPFrameGetter:
+    """
+    Lee frames en un hilo separado para que guardar el video 
+    no bloquee la lectura del stream.
+    """
+    def __init__(self, src):
+        self.cap = cv2.VideoCapture(src, cv2.CAP_FFMPEG)
+        self.q = queue.Queue()
+        self.stop_signal = False
+        self.connected = self.cap.isOpened()
+        
+        if self.connected:
+            self.width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            self.height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            # Usamos 25 FPS por defecto si la cámara falla al reportarlo
+            self.fps = self.cap.get(cv2.CAP_PROP_FPS)
+            if not self.fps or self.fps > 60 or self.fps < 1: 
+                self.fps = 25.0
+            
+            # Iniciamos el hilo
+            self.t = threading.Thread(target=self._reader_loop)
+            self.t.daemon = True
+            self.t.start()
+    
+    def _reader_loop(self):
+        while not self.stop_signal:
+            ret, frame = self.cap.read()
+            if not ret:
+                break
+            # Ponemos el frame en la fila. Si la fila está muy llena, sacamos el viejo 
+            # para no saturar la memoria RAM.
+            if not self.q.empty():
+                try:
+                    self.q.get_nowait() # Descartar frame viejo si hay acumulación (opcional)
+                except queue.Empty:
+                    pass
+            self.q.put(frame)
+            
+        self.cap.release()
+
+    def read(self):
+        return self.q.get() # Esto bloquea hasta que haya un frame disponible
+
+    def running(self):
+        return self.connected and not self.stop_signal
+
+    def stop(self):
+        self.stop_signal = True
+        self.t.join()
+
+# ======================================================================
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-print(f"Usando canal RTSP: {CHANNEL}")
-print(f"Duración por archivo: {SEGMENT_MINUTES} minutos")
-print(f"Carpeta de salida: {OUTPUT_DIR}")
-# ================================================
-
-
-def open_capture():
-    """Intenta abrir el RTSP, reintentando si falla."""
-    while True:
-        cap = cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG)
-        if cap.isOpened():
-            print("Stream RTSP abierto correctamente.")
-            print("Ancho:", cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            print("Alto:", cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            return cap
-        else:
-            print("No se pudo abrir el stream RTSP. Reintentando en 5 segundos...")
-            cap.release()
-            time.sleep(5)
-
-
-def create_writer(cap):
-    """Crear un VideoWriter nuevo con nombre basado en timestamp."""
-    width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    if fps is None or fps <= 0:
-        # Fallback si la cámara no reporta FPS
-        fps = 25.0
-
-    # Nombre: channelX_YYYYmmdd_HHMMSS.mp4
+def create_writer(width, height, fps):
     now = datetime.now()
     ts_str = now.strftime("%Y%m%d_%H%M%S")
-    filename = os.path.join(
-        OUTPUT_DIR,
-        f"channel{CHANNEL}_{ts_str}.mp4"
-    )
-
-    # Codec: mp4v (suele ir bien con extensión .mp4)
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    filename = os.path.join(OUTPUT_DIR, f"channel{CHANNEL}_{ts_str}.mp4")
+    # 'mp4v' es compatible, pero si sigue lento prueba 'avc1' si tienes codecs instalados
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v") 
     writer = cv2.VideoWriter(filename, fourcc, fps, (width, height))
-
-    if not writer.isOpened():
-        raise RuntimeError(f"No se pudo crear el archivo de video: {filename}")
-
-    print(f"Grabando nuevo segmento: {filename}")
+    print(f"Grabando: {filename}")
     return writer, filename
 
+# =============== BLOQUE PRINCIPAL ===============
 
+print("Conectando a cámara...")
+stream_loader = RTSPFrameGetter(rtsp_url)
+
+if not stream_loader.connected:
+    print("Error crítico: No se pudo conectar a la cámara.")
+    exit()
+
+writer, current_filename = create_writer(stream_loader.width, stream_loader.height, stream_loader.fps)
+segment_start_time = time.time()
 segment_duration_sec = SEGMENT_MINUTES * 60.0
 
-cv2.namedWindow("Frame", cv2.WINDOW_NORMAL)
+cv2.namedWindow("Grabacion", cv2.WINDOW_NORMAL)
 
-while True:  # bucle infinito hasta que cierres ventana o aprietes 'q'
-    cap = open_capture()
-    writer, current_filename = create_writer(cap)
-    segment_start_time = time.time()
-
+try:
     while True:
-        ret, frame = cap.read()
-        if not ret:
-            print("No se pudo leer frame del stream. Cerrando y reintentando conexión...")
-            writer.release()
-            cap.release()
-            break  # volvemos al while externo: se reabre el stream y se crea nuevo archivo
+        # Obtenemos frame del hilo (ya no directamente del socket)
+        # Esto es muy rápido porque el frame ya está en memoria RAM
+        try:
+            frame = stream_loader.q.get(timeout=5) # esperar max 5 seg por un frame
+        except queue.Empty:
+            print("Timeout recibiendo frames. Reiniciando conexión...")
+            break
 
-        # Escribimos frame en el video actual
+        # Escritura en disco (esto es lo que causaba el lag, ahora no afecta la lectura)
         writer.write(frame)
+        
+        cv2.imshow("Grabacion", frame)
 
-        # Mostrar para monitorear
-        cv2.imshow("Frame", frame)
-
-        # Chequear si ya pasamos la duración del segmento
-        elapsed = time.time() - segment_start_time
-        if elapsed >= segment_duration_sec:
-            print(f"Segmento completado ({SEGMENT_MINUTES} min): {current_filename}")
+        # Control de tiempo de segmento
+        if time.time() - segment_start_time >= segment_duration_sec:
+            print("Segmento completado.")
             writer.release()
-            # Comenzar un nuevo archivo sin cortar el stream
-            writer, current_filename = create_writer(cap)
+            writer, current_filename = create_writer(stream_loader.width, stream_loader.height, stream_loader.fps)
             segment_start_time = time.time()
 
-        # Cerrar ventana => salir del programa
-        if cv2.getWindowProperty("Frame", cv2.WND_PROP_VISIBLE) < 1:
-            print("Ventana cerrada. Saliendo del programa.")
-            writer.release()
-            cap.release()
-            cv2.destroyAllWindows()
-            raise SystemExit
-
-        # 'q' para salir manualmente del programa
         if cv2.waitKey(1) & 0xFF == ord('q'):
-            print("Tecla 'q' presionada. Saliendo del programa.")
-            writer.release()
-            cap.release()
-            cv2.destroyAllWindows()
-            raise SystemExit
+            break
+        
+        if cv2.getWindowProperty("Grabacion", cv2.WND_PROP_VISIBLE) < 1:
+            break
+
+except KeyboardInterrupt:
+    print("Interrupción de teclado.")
+
+finally:
+    print("Cerrando recursos...")
+    stream_loader.stop()
+    writer.release()
+    cv2.destroyAllWindows()

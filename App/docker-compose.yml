@@ -1,7 +1,7 @@
 version: "3.9"
 
 services:
-  # Service 1: PostgreSQL DB
+  # --- 1. Base de Datos (Sin cambios mayores, solo red) ---
   db:
     image: postgres:16
     container_name: buinzoo-postgres
@@ -14,8 +14,15 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - zoo_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U buinzoo"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  # Service 2: FastAPI backend
+  # --- 2. Backend (Tu API FastAPI) ---
   web:
     build:
       context: ./back
@@ -30,25 +37,61 @@ services:
       POSTGRES_DB: buinzoo
       SECRET_KEY: super_secret_dev_key_change_in_prod
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     ports:
-      - "8000:8000"  # Expose backend on host port 8000
+      - "8000:8000"
+    networks:
+      - zoo_net
 
-  # Service 3: Frontend (React / Vite build served by Nginx)
+  # --- 3. Frontend (React / Vite) ---
   frontend:
     build:
       context: ./front/my-app
       dockerfile: Dockerfile
       args:
-        # IMPORTANT: This tells React (in the BROWSER) where the backend is.
-        # Using 127.0.0.1 avoids IPv6 localhost issues.
+        # Para el navegador del usuario, localhost sigue siendo correcto
         VITE_API_BASE_URL: http://127.0.0.1:8000
     container_name: zoo_frontend
     restart: always
     ports:
-      - "80:80"  # Access the app in browser at http://localhost
+      - "80:80"
     depends_on:
       - web
+    networks:
+      - zoo_net
+
+  # --- 4. Visión (NUEVO: Detector Caracal) ---
+  vision_caracal:
+    build: 
+      context: ./vision  # Asegúrate de crear esta carpeta con los archivos nuevos
+    container_name: caracal_eyes
+    restart: always
+    # Configuración crítica para activar GPU NVIDIA
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    environment:
+      # IMPORTANTE: Aquí usamos "web" porque es el nombre del servicio arriba
+      - API_URL=http://web:8000/api/events
+      # URLs RTSP (puedes cambiarlas aquí si cambian las IPs)
+      - RTSP_LEFT=rtsp://view:vieW.,star3250@190.8.125.219:554/cam/realmonitor?channel=2&subtype=0
+      - RTSP_RIGHT=rtsp://view:vieW.,star3250@190.8.125.219:554/cam/realmonitor?channel=1&subtype=0
+    volumes:
+      # Montamos los modelos para poder actualizarlos sin reconstruir la imagen
+      - ./vision/yolo_model:/app/yolo_model
+    depends_on:
+      - web
+    networks:
+      - zoo_net
+
+networks:
+  zoo_net:
+    driver: bridge
 
 volumes:
   postgres_data:

@@ -1,0 +1,112 @@
+StreamVideos/
+# ARCHIVOS DE SISTEMA
+############################
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux
+*~
+
+############################
+# LOGS, TEMPORALES Y BACKUPS
+############################
+
+*.log
+*.tmp
+*.temp
+*.bak
+*.old
+*.swp
+*.swo
+
+############################
+# ARCHIVOS DE ENTORNO / SECRETS
+############################
+
+.env
+.env.*
+
+
+############################
+# ARCHIVOS GRANDES / BINARIOS
+# (se aplican en cualquier carpeta)
+############################
+
+# Vídeo
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.flv
+*.wmv
+*.webm
+*.mpg
+*.mpeg
+*.3gp
+
+# Audio
+*.mp3
+*.wav
+*.aac
+*.flac
+*.ogg
+*.wma
+
+# Imágenes pesadas / sin comprimir
+*.psd
+*.xcf
+*.tif
+*.tiff
+*.raw
+
+# Archivos de disco / imágenes enormes
+*.iso
+*.img
+*.bin
+*.dmg
+
+# Comprimidos / empaquetados (suelen ser grandes)
+*.zip
+*.rar
+*.7z
+*.tar
+*.tar.gz
+*.tgz
+
+############################
+# CARPETAS TÍPICAS DE BUILD
+############################
+
+# Node / frontend
+node_modules/
+dist/
+build/
+
+# Python
+__pycache__/
+*.pyc
+
+# Otros genéricos
+out/
+tmp/
+.cache/
+
+############################
+# IDEs
+############################
+
+# VSCode
+.vscode/
+
+# JetBrains (IntelliJ, PyCharm, etc.)
+.idea/
+
+# Otros
+*.iml
