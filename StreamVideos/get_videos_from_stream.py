@@ -39,7 +39,7 @@ OUTPUT_DIR = args.output_dir
 # =============== CONFIGURACIÓN RTSP ===============
 rtsp_url = (
     f"rtsp://view:vieW.,star3250@190.8.125.219:554/"
-    f"cam/realmonitor?channel={CHANNEL}&subtype=0"
+    f"cam/realmonitor?channel=0&subtype=0"
 )
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
