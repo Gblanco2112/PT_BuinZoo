@@ -1079,10 +1079,13 @@ export default function App() {
   const dayDistribution = useBehaviorDayDistribution(selectedId, chartDateISO);
   
   const chartPercents = useMemo(() => {
-    if (!dayDistribution?.behavior_percentages) return BEHAVIORS.map((b) => ({ behavior: b, pct: 0 }));
-    const bp = dayDistribution.behavior_percentages;
-    return BEHAVIORS.map((b) => ({ behavior: b, pct: bp[b] || 0 }));
+    const src =
+      dayDistribution?.behavior_percentages_vs_baseline ??
+      dayDistribution?.behavior_percentages; // fallback por si no viene
+    if (!src) return BEHAVIORS.map((b) => ({ behavior: b, pct: 0 }));
+    return BEHAVIORS.map((b) => ({ behavior: b, pct: src[b] || 0 }));
   }, [dayDistribution]);
+
 
   const baselinePercents = useMemo(() => {
     const baseMap = selected?.baseline_behavior_pct || {};
