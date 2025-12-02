@@ -18,11 +18,13 @@ from database import get_db
 from auth_routes import get_current_user
 
 from datetime import timezone
+from settings import settings
 
 router = APIRouter(tags=["zoo"])
 
 TZ = ZoneInfo("America/Santiago")
-TS = 300  
+TS = settings.TS_SECONDS
+
 
 # ------------------ Static animals & behaviors ------------------
 

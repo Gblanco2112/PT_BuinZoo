@@ -7,7 +7,7 @@ import os
 import requests  # <--- Para hablar con el otro Docker
 from pathlib import Path
 from ultralytics import YOLO
-
+from settings import settings
 # Importamos tu lógica
 from activity_logic import ActivityCheck
 
@@ -26,7 +26,7 @@ BEHAVIOR_MAP = {
     "N/A": "Resting" # Asumimos descanso si no se ve
 }
 
-DB_SAVE_INTERVAL = 5 # Segundos entre envíos a la API
+DB_SAVE_INTERVAL = settings.TS_SECONDS # Segundos entre envíos a la API
 
 class RTSPStream:
     """Hilo lector para evitar buffer drift"""
