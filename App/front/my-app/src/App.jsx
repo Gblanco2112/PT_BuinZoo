@@ -303,45 +303,22 @@ function useCurrentBehavior(animalId) {
 
 function useBehaviorTimeline(animalId, dateISO) {
   const [rows, setRows] = useState([]);
+
   useEffect(() => {
-    if (!animalId) {
-      setRows([]);
-      return;
-    }
-    let stop = false;
-    async function load() {
-      try {
-        const data = await getJSON("/api/behavior/timeline", {
-          animal_id: animalId,
-          date: dateISO,
-        });
-        if (!stop) setRows(data);
-      } catch {
-        if (!stop) setRows([]);
-      }
-    }
-    load();
-    let t = null;
-    if (dateISO === todayISO) {
-      t = setInterval(load, 15000);
-    }
-    return () => {
-      stop = true;
-      if (t) clearInterval(t);
-    };
+    let cancel = false;
+    if (!animalId) { setRows([]); return; }
+
+    getJSON("/api/behavior/timeline", { animal_id: animalId, date: dateISO })
+      .then((r) => { if (!cancel) setRows(Array.isArray(r) ? r : []); })
+      .catch(() => { if (!cancel) setRows([]); });
+
+    return () => { cancel = true; };
   }, [animalId, dateISO]);
 
-  if (!rows.length) {
-    const seed = (animalId || "seed")
-      .split("")
-      .reduce((a, c) => a + c.charCodeAt(0), 0);
-    return Array.from({ length: 24 }, (_, h) => ({
-      hour: h,
-      behavior: BEHAVIORS[(seed + h) % BEHAVIORS.length],
-    }));
-  }
-  return rows;
+  // 👉 Ya NO generamos datos si viene vacío.
+  return rows;          // [{hour, behavior}] o []
 }
+
 
 function useBehaviorDayDistribution(animalId, dateISO) {
   const [dist, setDist] = useState(null);
@@ -797,38 +774,63 @@ function BehaviorBadge({ behavior, confidence }) {
   );
 }
 
-function BehaviorRibbon({ timeline }) {
-  const cols = timeline.length || 1;
-  const gridStyle = { gridTemplateColumns: `repeat(${cols}, 1fr)` };
+function BehaviorRibbon({ timeline, untilHour = 23 }) {
+  // indexar por hora lo que venga del backend
+  const byHour = useMemo(() => {
+    const m = new Map();
+    (timeline || []).forEach(({ hour, behavior }) => m.set(hour, behavior));
+    return m;
+  }, [timeline]);
+
+  // construir la secuencia de horas esperada (0..untilHour)
+  const hours = Array.from({ length: untilHour + 1 }, (_, h) => h);
+
   return (
     <div>
-      <div className="ribbon" style={gridStyle} aria-label="Comportamiento por hora">
-        {timeline.map(({ hour, behavior }) => (
-          <div
-            key={hour}
-            className="ribbon-cell"
-            title={`Hora ${String(hour).padStart(2, "0")}:00 — ${behavior}`}
-            style={{ background: colorForBehavior(behavior) }}
-          />
-        ))}
+      <div className="ribbon" aria-label="Comportamiento por hora (hoy)">
+        {hours.map((h) => {
+          const behavior = byHour.get(h);
+          const isEmpty = behavior == null;
+          const style = isEmpty
+            ? {}
+            : { background: colorForBehavior(behavior) };
+          return (
+            <div
+              key={h}
+              className={`ribbon-cell ${isEmpty ? "empty" : ""}`}
+              title={
+                isEmpty
+                  ? `${String(h).padStart(2, "0")}:00 — sin datos`
+                  : `${String(h).padStart(2, "0")}:00 — ${behavior}`
+              }
+              style={style}
+              aria-label={`Hora ${h}${isEmpty ? ", sin datos" : ", " + behavior}`}
+            />
+          );
+        })}
       </div>
-      <div className="ribbon-labels" style={gridStyle}>
-        {timeline.map(({ hour }) => (
-          <div key={`t-${hour}`} className="ribbon-time">
-            {String(hour).padStart(2, "0")}:00
+
+      {/* Etiquetas bajo cada bloque */}
+      <div className="ribbon-labels">
+        {hours.map((h) => (
+          <div key={h} className="ribbon-time">
+            {String(h).padStart(2, "0")}:00
           </div>
         ))}
       </div>
+
+      {/* Leyenda */}
       <div className="ribbon-legend" style={{ marginTop: 8 }}>
         {BEHAVIORS.map((b) => (
           <div key={b} className="legend-item">
-            <span
-              className="legend-swatch"
-              style={{ background: colorForBehavior(b) }}
-            />
+            <span className="legend-swatch" style={{ background: colorForBehavior(b) }} />
             <span className="legend-label">{b}</span>
           </div>
         ))}
+        <div className="legend-item">
+          <span className="legend-swatch legend-empty" />
+          <span className="legend-label">Sin datos</span>
+        </div>
       </div>
     </div>
   );

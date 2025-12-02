@@ -22,6 +22,7 @@ from datetime import timezone
 router = APIRouter(tags=["zoo"])
 
 TZ = ZoneInfo("America/Santiago")
+TS = 300  
 
 # ------------------ Static animals & behaviors ------------------
 
@@ -204,12 +205,12 @@ def behavior_timeline(
 def behavior_day_distribution(
     animal_id: str,
     date: Optional[str] = None,
+    ts: int = TS,  # NEW
     db: Session = Depends(get_db),
     current = Depends(get_current_user),
 ):
     """
-    Distribución de comportamientos para un día específico,
-    basada en *todos* los BehaviorEvent de ese día.
+    Distribución de comportamientos para un día específico.
 
     Devuelve:
       {
@@ -217,27 +218,23 @@ def behavior_day_distribution(
         "date": "YYYY-MM-DD",
         "total_events": N,
         "behavior_counts": { "Foraging": 12, ... },
-        "behavior_percentages": { "Foraging": 25.0, ... }
+        "behavior_percentages": { "Foraging": 25.0, ... },                   # OBSERVADO
+        "baseline_samples_per_day": float,                                   # NUEVO
+        "behavior_percentages_vs_baseline": { "Foraging": 1.2, ... }         # NUEVO (sobre día completo)
       }
     """
     now_local = datetime.now(TZ)
     req_date = now_local.date() if not date else datetime.strptime(date, "%Y-%m-%d").date()
 
-    # No datos en el futuro
-    if req_date > now_local.date():
-        return {
-            "animal_id": animal_id,
-            "date": req_date.isoformat(),
-            "total_events": 0,
-            "behavior_counts": {},
-            "behavior_percentages": {b: 0.0 for b in BEHAVIORS},
-        }
-
+    # Rango del día en zona local
     day_start = datetime.combine(req_date, time.min, tzinfo=TZ)
     day_end = day_start + timedelta(days=1)
+
+    # Para 'hoy', cortamos en ahora; para fechas pasadas, día completo
     if req_date == now_local.date():
         day_end = min(day_end, now_local)
 
+    # Leer eventos de ese día
     events = (
         db.query(models.BehaviorEvent)
         .filter(
@@ -248,27 +245,41 @@ def behavior_day_distribution(
         .all()
     )
 
+    # Conteos observados
     behavior_counts: Dict[str, int] = {}
     for ev in events:
         behavior_counts[ev.behavior] = behavior_counts.get(ev.behavior, 0) + 1
 
-    total = sum(behavior_counts.values())
+    total_observed = sum(behavior_counts.values())
 
-    if total == 0:
-        behavior_percentages = {b: 0.0 for b in BEHAVIORS}
+    # % observado (lo que tenías antes; mantenemos el campo)
+    if total_observed == 0:
+        observed_percentages = {b: 0.0 for b in BEHAVIORS}
     else:
-        behavior_percentages = {
-            b: (behavior_counts.get(b, 0) / total) * 100.0 for b in BEHAVIORS
+        observed_percentages = {
+            b: (behavior_counts.get(b, 0) / total_observed) * 100.0 for b in BEHAVIORS
+        }
+
+    # -------- NUEVO: % Vs Baseline del día completo ----------
+    per_hour = 3600.0 / ts                 # muestras/​hora (puede ser float)
+    baseline_day = 24.0 * per_hour         # muestras teóricas en 24h
+
+    if baseline_day <= 0:
+        vs_baseline = {b: 0.0 for b in BEHAVIORS}
+    else:
+        vs_baseline = {
+            b: (behavior_counts.get(b, 0) / baseline_day) * 100.0 for b in BEHAVIORS
         }
 
     return {
         "animal_id": animal_id,
         "date": req_date.isoformat(),
-        "total_events": total,
+        "total_events": total_observed,
         "behavior_counts": behavior_counts,
-        "behavior_percentages": behavior_percentages,
+        "behavior_percentages": observed_percentages,                 # (observado)
+        "baseline_samples_per_day": baseline_day,                     # (info)
+        "behavior_percentages_vs_baseline": vs_baseline,              # (nuevo)
     }
-
 
 
 @router.get("/behavior/summary_last_days")
@@ -776,7 +787,7 @@ def check_and_create_alerts(db: Session, animal_id: str, behavior: str, ts: date
     
     # --- CONFIGURATION ---
     DEFAULT_TOLERANCE = 5.0
-    SAMPLING_PERIOD_SECONDS = 300  # 5 Minutes (Must match your pipeline/simulation)
+    SAMPLING_PERIOD_SECONDS = TS  # 5 Minutes (Must match your pipeline/simulation)
     MIN_HOURS_TO_ANALYZE = 1       # Don't alert in the first hour of the day
 
     # 1. Get Baseline

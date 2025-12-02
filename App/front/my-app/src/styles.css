@@ -423,6 +423,27 @@ html, body, #root {
   gap: 10px 16px;
   margin-top: 10px;
 }
+
+/* Estado vacío para celdas sin datos */
+.ribbon-cell.empty {
+  background: #11151f;                 /* fondo tenue */
+  border: 1px dashed #2b3240;          /* borde punteado */
+  box-shadow: none;
+  opacity: 0.7;
+}
+
+/* Swatch de "sin datos" en la leyenda */
+.legend-swatch.legend-empty {
+  background: repeating-linear-gradient(
+    45deg,
+    #11151f,
+    #11151f 4px,
+    #1a2130 4px,
+    #1a2130 8px
+  );
+  border: 1px dashed #2b3240;
+}
+
 .legend-item { display: inline-flex; align-items: center; gap: 8px; }
 .legend-swatch {
   width: 14px;
