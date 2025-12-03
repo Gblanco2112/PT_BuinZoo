@@ -1,14 +1,15 @@
-# Usamos la imagen oficial de Ultralytics que ya trae PyTorch, CUDA y YOLO
 FROM ultralytics/ultralytics:latest
 
 WORKDIR /app
 
-# Instalamos dependencias extra (requests)
-COPY requirements.txt .
+# Copiamos requirements desde la carpeta 'vision'
+COPY vision/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copiamos el código
-COPY . .
+# --- CAMBIO IMPORTANTE ---
+# 1. Copiamos settings.py de la raíz
+COPY settings.py .
+# 2. Copiamos el código fuente de la carpeta vision
+COPY vision/ .
 
-# Ejecutamos el script de visión (con -u para ver logs en tiempo real)
 CMD ["python", "-u", "main.py"]
