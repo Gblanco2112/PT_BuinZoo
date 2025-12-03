@@ -159,14 +159,16 @@ def main():
         cv2.resizeWindow("Monitor Dual Caracal", 1800, 600)
 
     while True:
-        # Leemos el "instante actual" de ambos hilos
-        status_l, frame_left = stream_left.read()
-        status_r, frame_right = stream_right.read()
+        status_l, frame_left_raw = stream_left.read()  # Leemos el RAW
+        status_r, frame_right_raw = stream_right.read() # Leemos el RAW
 
-        # Si algún hilo murió o perdió señal
         if not status_l or not status_r:
-            print("Pérdida de señal en una cámara.")
-            break
+            print("Esperando señal de video...")
+            time.sleep(1)
+            continue
+        
+        frame_left = frame_left_raw.copy()
+        frame_right = frame_right_raw.copy()
 
         # Redimensionar seguro (usando copias para no afectar al hilo lector)
         if frame_left.shape != frame_right.shape:
