@@ -138,14 +138,17 @@ def main():
     print("Sistema ONLINE. Procesando...")
 
     while True:
-        status_l, frame_left = stream_left.read()
-        status_r, frame_right = stream_right.read()
+        status_l, frame_left_raw = stream_left.read()  # Leemos el RAW
+        status_r, frame_right_raw = stream_right.read() # Leemos el RAW
 
         if not status_l or not status_r:
             print("Esperando señal de video...")
             time.sleep(1)
             continue
-            
+        
+        frame_left = frame_left_raw.copy()
+        frame_right = frame_right_raw.copy()
+        
         # Ajuste de tamaño simple
         if frame_left.shape != frame_right.shape:
              frame_right = cv2.resize(frame_right, (frame_left.shape[1], frame_left.shape[0]))
