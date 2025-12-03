@@ -1,14 +1,19 @@
+/* styles.css
+   Hoja de estilos principal del dashboard: layout, sidebar, gráficos y login.
+   Se apoya en variables CSS para mantener una paleta consistente.
+*/
+
 /* =========================
-   Theme tokens (from template)
+   Tokens de tema (paleta)
    ========================= */
 :root{
-  --main-color:   #154f38; /* deep green */
-  --alter-color:  #a7ca50; /* lime/avocado accent */
-  --section-color:#f7eac9; /* warm sand */
+  --main-color:   #154f38; /* verde profundo principal */
+  --alter-color:  #a7ca50; /* acento lima/aguacate */
+  --section-color:#f7eac9; /* arena cálida para detalles */
 
-  /* Derived neutrals for a cohesive dark UI */
-  --bg:           #0e1512; /* canvas */
-  --bg-elev:      #111b16; /* cards/sidebars */
+  /* Neutros derivados para UI oscura cohesiva */
+  --bg:           #0e1512; /* fondo principal */
+  --bg-elev:      #111b16; /* tarjetas / paneles elevados */
   --bg-hover:     #14231c;
   --bg-selected:  #183026;
 
@@ -20,13 +25,13 @@
 
   --focus:        var(--alter-color);
   --accent:       var(--alter-color);
-  --accent-2:     #7fb63e;   /* slightly darker accent */
-  --accent-3:     #c7dc77;   /* slightly lighter accent */
+  --accent-2:     #7fb63e;   /* acento un poco más oscuro */
+  --accent-3:     #c7dc77;   /* acento un poco más claro */
 
   --danger:       #ef4444;
 }
 
-/* Layout */
+/* Layout raíz: ocupa toda la pantalla y divide en sidebar + detalle */
 html, body, #root {
   height: 100%;
   margin: 0;
@@ -34,14 +39,14 @@ html, body, #root {
 
 .layout {
   display: flex;
-  height: 100vh;           /* full height layout */
-  overflow: hidden;        /* prevent body scroll; each pane scrolls independently */
-  background: var(--bg);   /* dark-ish canvas */
+  height: 100vh;           /* layout a pantalla completa */
+  overflow: hidden;        /* evita scroll en body; cada panel maneja su scroll */
+  background: var(--bg);   /* fondo oscuro */
   color: var(--text);
   font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji";
 }
 
-/* Sidebar */
+/* Sidebar: lista de animales */
 .sidebar {
   width: 280px;
   min-width: 240px;
@@ -50,7 +55,7 @@ html, body, #root {
   background: var(--bg-elev);
   overflow-y: auto;
   padding: 8px;
-  outline: none;           /* we'll handle focus style */
+  outline: none;           /* manejamos focus manualmente */
   scroll-behavior: smooth;
 }
 
@@ -58,6 +63,7 @@ html, body, #root {
   box-shadow: inset 0 0 0 2px var(--focus);
 }
 
+/* Fila de animal en la lista lateral */
 .row {
   display: flex;
   flex-direction: column;
@@ -92,7 +98,7 @@ html, body, #root {
   font-size: 0.82rem;
 }
 
-/* Detail panel */
+/* Panel de detalle (contenido principal) */
 .detail {
   flex: 1;
   overflow-y: auto;
@@ -103,8 +109,8 @@ html, body, #root {
   border-bottom: 1px solid var(--border);
   margin-bottom: 16px;
   padding-bottom: 12px;
-  position: relative;      /* for header actions positioning */
-  padding-right: 0;        /* no extra space; actions are absolutely positioned */
+  position: relative;      /* posiciona acciones en esquina derecha */
+  padding-right: 0;
 }
 
 .detail-title {
@@ -123,7 +129,7 @@ html, body, #root {
   font-size: 1rem;
 }
 
-/* Simple cards */
+/* Tarjetas pequeñas de KPIs (ID animal, comportamiento actual, última actualización) */
 .detail-cards {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -152,14 +158,14 @@ html, body, #root {
   font-weight: 600;
 }
 
-/* Responsive: collapse sidebar on small screens */
+/* Responsive: en pantallas pequeñas el sidebar pasa arriba y se colapsan tarjetas */
 @media (max-width: 820px) {
   .layout {
     flex-direction: column;
   }
   .sidebar {
     width: 100%;
-    max-height: 40vh;      /* shows as a top scroller */
+    max-height: 40vh;      /* se muestra como lista scrolleable superior */
     border-right: none;
     border-bottom: 1px solid var(--border);
   }
@@ -169,7 +175,7 @@ html, body, #root {
 }
 
 /* =========================
-   Header actions (bell + logout)
+   Header actions (campana + logout)
    ========================= */
 .header-actions {
   position: absolute;
@@ -178,37 +184,37 @@ html, body, #root {
   transform: translateY(-50%);
   display: inline-flex;
   align-items: center;
-  gap: 10px; /* space between bell and logout */
+  gap: 10px; /* espacio entre campana y logout */
 }
 
-/* Bell stays in flow but is the positioning context for its badge */
+/* La campana actúa como ancla del badge de notificaciones */
 .header-actions .icon-btn.notif-bell {
-  position: relative;   /* keep context for .badge */
+  position: relative;   /* mantiene contexto para .badge */
   transform: none;
-  margin-right: 8px;    /* room for badge overhang */
+  margin-right: 8px;    /* espacio para el badge que sobresale */
 }
 
-/* Keep the red badge over the bell, not the logout */
+/* Posicionamiento del badge rojo sobre la campana */
 .header-actions .notif-bell .badge {
   top: -4px;
-  right: -4px;          /* tweak to taste (-2px for tighter) */
+  right: -4px;          /* ajustar para finos detalles */
   z-index: 2;
 }
 
-/* Logout icon button (same look/feel as .icon-btn) */
+/* Botón de logout (mismo estilo base que .icon-btn) */
 .header-actions .logout-btn {
   position: static;
   transform: none;
 }
 
 /* =========================
-   Notifications
+   Notificaciones
    ========================= */
 
-/* Anchor context for tray */
+/* El panel de detalle sirve como contexto para el popover de alertas */
 .detail { position: relative; }
 
-/* Icon button + badge (bell) */
+/* Botón de icono con borde + fondo elevado (campana, logout, etc.) */
 .icon-btn {
   position: relative;
   display: inline-flex;
@@ -225,7 +231,7 @@ html, body, #root {
 .icon-btn:hover { background: var(--bg-hover); }
 .icon-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
-/* Default bell placement (overridden inside .header-actions) */
+/* Posición por defecto de la campana (se overridea en header-actions) */
 .icon-btn.notif-bell {
   position: absolute;
   top: 50%;
@@ -233,6 +239,7 @@ html, body, #root {
   transform: translateY(-50%);
 }
 
+/* Badge numérico de alertas no leídas */
 .badge {
   position: absolute;
   top: -4px;
@@ -250,13 +257,13 @@ html, body, #root {
   border: 2px solid var(--bg-elev);
 }
 
-/* Notification tray (popover) */
+/* Bandeja flotante que lista alertas (popover) */
 .notif-tray {
   position: absolute;
   top: 8px;
   right: 12px;
   width: min(420px, 92vw);
-  background: #0f1915; /* slightly lifted over canvas */
+  background: #0f1915; /* ligeramente elevado sobre el canvas */
   border: 1px solid var(--border);
   border-radius: 12px;
   box-shadow: 0 12px 40px rgba(0,0,0,0.55);
@@ -274,6 +281,7 @@ html, body, #root {
 }
 .notif-footer { border-top: 1px solid var(--border); border-bottom: none; }
 
+/* Botones tipo link para acciones dentro de la bandeja */
 .link-btn, .secondary-btn {
   background: transparent;
   color: var(--accent);
@@ -283,12 +291,14 @@ html, body, #root {
 }
 .link-btn:hover, .secondary-btn:hover { text-decoration: underline; }
 
+/* Lista scrolleable de alertas */
 .notif-list {
   max-height: 320px;
   overflow: auto;
   padding: 6px;
 }
 
+/* Ítem de alerta (leída/no leída) */
 .notif-item {
   padding: 10px 10px 8px 10px;
   border-radius: 10px;
@@ -304,13 +314,13 @@ html, body, #root {
 .notif-body { opacity: 0.9; color: var(--text-dim); font-size: 0.9rem; margin-top: 2px; }
 .notif-meta { opacity: 0.7; color: var(--text-dim); font-size: 0.8rem; margin-top: 6px; }
 
-/* Mobile tweaks */
+/* Ajustes móviles para la bandeja de alertas */
 @media (max-width: 820px) {
   .notif-tray { right: 8px; top: 6px; width: min(96vw, 520px); }
 }
 
 /* =========================
-   Plot / Chart styles (SVG)
+   Plot / estilos de gráficos (SVG)
    ========================= */
 .plot-panel {
   margin-top: 16px;
@@ -342,6 +352,7 @@ html, body, #root {
   opacity: 0.95;
 }
 
+/* Flechas para cambiar de día en el gráfico de barras */
 .arrow-btn {
   display: inline-flex;
   align-items: center;
@@ -357,6 +368,7 @@ html, body, #root {
 .arrow-btn:hover { background: var(--bg-hover); }
 .arrow-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
+/* SVG genérico para plots */
 .plot {
   width: 100%;
   height: 180px;
@@ -375,6 +387,7 @@ html, body, #root {
   border-top: 1px solid var(--border);
 }
 
+/* Pequeños stats debajo de algunos gráficos */
 .plot-stat {
   display: grid;
   grid-template-columns: 1fr;
@@ -392,6 +405,7 @@ html, body, #root {
 /* =========================
    Behavior badge + ribbon
    ========================= */
+/* Pill que muestra comportamiento actual y confianza */
 .badge-pill {
   display: inline-flex;
   align-items: center;
@@ -405,6 +419,7 @@ html, body, #root {
   font-size: 0.9rem;
 }
 
+/* Cinta de 24 bloques (horas) */
 .ribbon {
   display: grid;
   grid-template-columns: repeat(24, 1fr);
@@ -417,6 +432,7 @@ html, body, #root {
   box-shadow: inset 0 0 0 1px rgba(0,0,0,.25);
 }
 
+/* Leyenda de la cinta de comportamiento */
 .ribbon-legend {
   display: flex;
   flex-wrap: wrap;
@@ -424,7 +440,7 @@ html, body, #root {
   margin-top: 10px;
 }
 
-/* Estado vacío para celdas sin datos */
+/* Estado vacío para celdas sin datos: sombreado y borde punteado */
 .ribbon-cell.empty {
   background: #11151f;                 /* fondo tenue */
   border: 1px dashed #2b3240;          /* borde punteado */
@@ -454,10 +470,10 @@ html, body, #root {
 }
 .legend-label { font-size: 0.85rem; color: var(--text-dim); }
 
-/* Tiny utility (used in JSX) */
+/* Utilidad pequeña usada en JSX para padding */
 .p-4 { padding: 1rem; }
 
-/* Etiquetas bajo la cinta horaria */
+/* Etiquetas bajo la cinta horaria con horas 00:00–23:00 */
 .ribbon-labels {
   display: grid;
   grid-template-columns: repeat(24, 1fr);
@@ -473,7 +489,7 @@ html, body, #root {
 }
 
 /* =========================
-   Login (fullscreen overlay)
+   Login (overlay a pantalla completa)
    ========================= */
 .login-container {
   position: fixed;
@@ -482,10 +498,10 @@ html, body, #root {
   place-items: center;
   background: linear-gradient(180deg, rgba(14,21,18,0.96) 0%, rgba(14,21,18,0.98) 100%);
   backdrop-filter: blur(2px);
-  z-index: 50; /* encima de todo */
+  z-index: 50; /* se muestra sobre todo lo demás */
 }
 
-/* Tarjeta del formulario */
+/* Tarjeta de formulario de login */
 .login-form {
   font-family: 'Poppins', sans-serif;
   width: min(420px, 92vw);
@@ -513,7 +529,7 @@ html, body, #root {
   color: var(--text);
 }
 
-/* Inputs */
+/* Inputs de usuario y contraseña */
 .login-form input[type="text"],
 .login-form input[type="password"] {
   width: 100%;
@@ -536,7 +552,7 @@ html, body, #root {
   background: var(--bg-elev);
 }
 
-/* Botón principal */
+/* Botón principal de login */
 .login-form button[type="submit"] {
   display: inline-flex;
   align-items: center;
@@ -560,7 +576,7 @@ html, body, #root {
   cursor: not-allowed;
 }
 
-/* Mensaje de error */
+/* Mensaje de error para login */
 .login-form .error {
   margin: 2px 0 0;
   padding: 8px 10px;  
@@ -571,26 +587,26 @@ html, body, #root {
   font-size: 0.9rem;
 }
 
-/* Texto auxiliar (opcional) */
+/* Texto auxiliar bajo el formulario (si se quisiera usar) */
 .login-hint {
   margin-top: 4px;
   font-size: 0.85rem;
   color: var(--text-dim);
 }
 
-/* Responsive */
+/* Ajustes responsive en pantallas muy pequeñas */
 @media (max-width: 480px) {
   .login-form { padding: 16px 14px; border-radius: 12px; }
   .login-form h2 { font-size: 1.1rem; }
 }
 
-/* Accesibilidad con teclado */
+/* Accesibilidad: focus visible en el botón de enviar */
 .login-form button:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 
-
+/* Alineación de contenido del formulario al centro */
 .login-form {
   display: flex;
   flex-direction: column;
@@ -598,10 +614,10 @@ html, body, #root {
   gap: 12px;
 }
 
+/* Logo superior del formulario de login */
 .login-logo {
   display: block;
   margin-bottom: 8px;
   max-width: 260px;
   height: auto;
 }
-

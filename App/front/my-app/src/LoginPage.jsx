@@ -1,4 +1,6 @@
 // LoginPage.jsx
+// Pantalla de login de la aplicación. Maneja usuario/contraseña y estados de carga/error.
+
 import { useState } from "react";
 import { useAuth } from "./AuthContext";
 // If you place the file in src/assets:
@@ -12,6 +14,7 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // Maneja el submit del formulario: llama a login() y controla errores/loader
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -19,6 +22,7 @@ export default function LoginPage() {
     try {
       await login(username, password);
     } catch (err) {
+      // Mensaje genérico en caso de credenciales inválidas
       setError("Usuario o contraseña incorrectos");
     } finally {
       setLoading(false);
@@ -30,7 +34,7 @@ export default function LoginPage() {
       <form onSubmit={handleSubmit} className="login-form">
         <img
           className="login-logo"
-          src={logo}          // or "/buinzoo-logo.png" if you put it in /public
+          src={logo}          // o "/buinzoo-logo.png" si el archivo está en /public
           alt="Bioparque Buinzoo"
           width={240}
           height="auto"

@@ -1,25 +1,31 @@
+// App.jsx
+// Dashboard principal de bienestar animal para Buin Zoo.
+// Contiene helpers de API, hooks de datos, componentes de UI y gráficos SVG.
+
 import { useMemo, useState, useCallback, useEffect, useRef } from "react";
 import { useAuth } from "./AuthContext.jsx";
 import "./styles.css";
 
 /* =================================
-   Ayudas de API
+   Ayudas de API / configuración base
    ================================= */
+// URL base de la API (tomada desde variables de entorno o localhost por defecto)
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+// Zona horaria usada en todo el frontend para alinear con el backend
 const tz = "America/Santiago";
+// Fecha de hoy en formato YYYY-MM-DD, útil para consultas diarias
 const todayISO = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(
   new Date()
 ); // YYYY-MM-DD
 
-
-// Add this near the top of App.jsx, after labelFromISO function
-
+// Función helper para descargar un PDF de reporte de bienestar en una nueva pestaña
 function downloadPDF(reportId) {
-  // Opens the PDF download endpoint in a new tab
-  // The browser automatically attaches the cookies for authentication
+  // Abre el endpoint de descarga de PDF en una nueva pestaña.
+  // El navegador adjunta automáticamente las cookies de autenticación.
   window.open(`${API_BASE}/api/reports/${reportId}/pdf`, '_blank');
 }
 
+// Helper para GET JSON con manejo automático de refresh de token
 async function getJSON(path, params) {
   const url = new URL(API_BASE + path);
   if (params)
@@ -29,6 +35,7 @@ async function getJSON(path, params) {
 
   let res = await fetch(url, { credentials: "include" });
   if (res.status === 401) {
+    // Si el access token expira, se intenta refrescar y repetir el request
     await fetch(API_BASE + "/auth/refresh", {
       method: "POST",
       credentials: "include",
@@ -39,6 +46,7 @@ async function getJSON(path, params) {
   return res.json();
 }
 
+// Helper para POST JSON con manejo automático de refresh de token
 async function postJSON(path, body) {
   let res = await fetch(API_BASE + path, {
     method: "POST",
@@ -47,6 +55,7 @@ async function postJSON(path, body) {
     body: body ? JSON.stringify(body) : undefined,
   });
   if (res.status === 401) {
+    // Si el access token expira, se intenta refrescar y repetir el request
     await fetch(API_BASE + "/auth/refresh", {
       method: "POST",
       credentials: "include",
@@ -62,10 +71,11 @@ async function postJSON(path, body) {
   return res.json();
 }
 
+// Convierte una fecha YYYY-MM-DD a un label amigable (ej: "05 sep")
 function labelFromISO(dateISO) {
   if (!dateISO) return "";
   const [y, m, d] = dateISO.split("-").map(Number);
-  const localDate = new Date(y, m - 1, d); // local midnight
+  const localDate = new Date(y, m - 1, d); // medianoche local
   return localDate.toLocaleDateString("es-CL", {
     day: "2-digit",
     month: "short",
@@ -75,6 +85,8 @@ function labelFromISO(dateISO) {
 /* =================================
    Iconos / Notificaciones
    ================================= */
+
+// Icono de campana para el botón de notificaciones
 function BellIcon({ filled }) {
   return (
     <svg
@@ -101,6 +113,7 @@ function BellIcon({ filled }) {
   );
 }
 
+// Icono de logout para el botón de cierre de sesión
 function LogoutIcon() {
   return (
     <svg
@@ -130,6 +143,7 @@ function LogoutIcon() {
   );
 }
 
+// Bandeja flotante de notificaciones / alertas
 function NotificationTray({
   open,
   onClose,
@@ -142,6 +156,7 @@ function NotificationTray({
 }) {
   const trayRef = useRef(null);
 
+  // Manejo de cierre al hacer click fuera o presionar Escape
   useEffect(() => {
     if (!open) return;
     const onDoc = (e) => {
@@ -162,6 +177,7 @@ function NotificationTray({
 
   if (!open) return null;
 
+  // Solo mostramos alertas no leídas
   const items = notifications.filter((n) => n.unread);
 
   return (
@@ -226,6 +242,7 @@ function NotificationTray({
 /* =================================
    Mapeo de comportamientos
    ================================= */
+// Lista de comportamientos que el backend y el frontend comparten
 const BEHAVIORS = [
   "Foraging",
   "Resting",
@@ -234,6 +251,8 @@ const BEHAVIORS = [
   "Play",
   "Stereotypy",
 ];
+
+// Colores asociados a cada comportamiento para usar en gráficos / badges
 const BEHAVIOR_COLORS = {
   Foraging: "#60a5fa",
   Resting: "#94a3b8",
@@ -242,11 +261,15 @@ const BEHAVIOR_COLORS = {
   Play: "#a78bfa",
   Stereotypy: "#ef4444",
 };
+
+// Devuelve el color para un comportamiento o un color neutro por defecto
 const colorForBehavior = (b) => BEHAVIOR_COLORS[b] || "#64748b";
 
 /* =================================
-   Hooks
+   Hooks de datos (API)
    ================================= */
+
+// Hook para obtener la lista de animales disponibles desde el backend
 function useAnimals() {
   const [animals, setAnimals] = useState([]);
   useEffect(() => {
@@ -255,6 +278,7 @@ function useAnimals() {
   return animals;
 }
 
+// Hook para obtener y gestionar alertas (como notificaciones)
 function useAlerts(animalIdOrNull) {
   const [notifications, setNotifications] = useState([]);
   const load = async () => {
@@ -272,12 +296,14 @@ function useAlerts(animalIdOrNull) {
   };
   useEffect(() => {
     load().catch(() => {});
+    // Polling periódico para mantener las alertas actualizadas
     const t = setInterval(load, 10000);
     return () => clearInterval(t);
   }, [animalIdOrNull]);
   return { notifications, setNotifications, reload: load };
 }
 
+// Hook para obtener el comportamiento actual de un animal (último evento)
 function useCurrentBehavior(animalId) {
   const [cur, setCur] = useState(null);
   useEffect(() => {
@@ -292,6 +318,7 @@ function useCurrentBehavior(animalId) {
       } catch (_) {}
     }
     load();
+    // Polling cada 15 segundos para refrescar el KPI
     const t = setInterval(load, 15000);
     return () => {
       stop = true;
@@ -301,6 +328,7 @@ function useCurrentBehavior(animalId) {
   return cur;
 }
 
+// Hook para obtener la línea de tiempo de comportamiento (por hora) para un día
 function useBehaviorTimeline(animalId, dateISO) {
   const [rows, setRows] = useState([]);
 
@@ -315,11 +343,11 @@ function useBehaviorTimeline(animalId, dateISO) {
     return () => { cancel = true; };
   }, [animalId, dateISO]);
 
-  // 👉 Ya NO generamos datos si viene vacío.
+  // Ya NO generamos datos si viene vacío; delegamos al backend.
   return rows;          // [{hour, behavior}] o []
 }
 
-
+// Hook para obtener la distribución de comportamientos en un día específico
 function useBehaviorDayDistribution(animalId, dateISO) {
   const [dist, setDist] = useState(null);
   useEffect(() => {
@@ -341,6 +369,7 @@ function useBehaviorDayDistribution(animalId, dateISO) {
     }
     load();
     let t = null;
+    // Para el día actual se hace polling para ver cambios en tiempo (casi) real
     if (dateISO === todayISO) {
       t = setInterval(load, 15000);
     }
@@ -352,16 +381,17 @@ function useBehaviorDayDistribution(animalId, dateISO) {
   return dist;
 }
 
+// Hook para obtener historial de desviación respecto al baseline de los últimos 7 días
 function useDeviationHistory(animalId, baselinePctMap) {
   const [history, setHistory] = useState([]);
   
-  // Create a stable string key for the baseline object to use in dependencies
+  // Se crea una clave estable a partir del baseline para evitar loops en dependencias
   const baselineKey = JSON.stringify(baselinePctMap);
 
   useEffect(() => {
     if (!animalId) return;
     
-    // Generar últimos 7 días
+    // Genera los últimos 7 días (de más antiguo a más reciente)
     const dates = Array.from({ length: 7 }, (_, i) => {
       const d = new Date();
       d.setDate(d.getDate() - (6 - i));
@@ -388,6 +418,7 @@ function useDeviationHistory(animalId, baselinePctMap) {
           BEHAVIORS.forEach((b) => {
             const actual = dayData[b] || 0;
             const base = baselinePctMap[b] || 0;
+            // Desviación absoluta vs baseline (positiva o negativa)
             dayDeviation[b] = actual - base;
           });
           return { date: d.label, values: dayDeviation };
@@ -401,24 +432,25 @@ function useDeviationHistory(animalId, baselinePctMap) {
     
     loadAll();
     
-    // Polling cada 15 segundos para mantener el "hoy" actualizado
+    // Polling cada 15 segundos para mantener actualizado el día actual
     const t = setInterval(loadAll, 15000);
     
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [animalId, baselineKey]); // Use the stringified key to avoid loop
+  }, [animalId, baselineKey]); // Dependencia estable a partir del baseline serializado
 
   return history;
 }
 
 /* =================================
-   Gráfico % día (Mejorado con Legend Izquierda)
+   Gráfico % día (barras vs baseline)
    ================================= */
+// Gráfico de barras que muestra porcentaje de tiempo por comportamiento vs baseline
 function BehaviorPercentBarChart({
   data,
   baseline,
   height = 180,
-  width = 480, // Reduced from 560 to accommodate side legend
+  width = 480, // reducido para dejar espacio a la leyenda lateral
   padding = 18,
 }) {
   const maxPct = 100;
@@ -443,7 +475,7 @@ function BehaviorPercentBarChart({
   return (
     <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 24, justifyContent: 'center' }}>
       
-      {/* 1. Left Side Legend (Baselines) */}
+      {/* Leyenda lateral que muestra el baseline por comportamiento */}
       <div style={{ minWidth: 110 }}>
         <div style={{ 
           fontSize: '10px', 
@@ -477,7 +509,7 @@ function BehaviorPercentBarChart({
         </div>
       </div>
 
-      {/* 2. The Chart */}
+      {/* SVG principal del gráfico de barras */}
       <div>
         <svg className="plot" viewBox={`0 0 ${width} ${height}`} role="img" style={{ display: "block" }}>
           <rect x="0" y="0" width={width} height={height} className="plot-bg" />
@@ -534,7 +566,7 @@ function BehaviorPercentBarChart({
           })}
         </svg>
         
-        {/* Simple legend below to explain dashed line */}
+        {/* Leyenda que explica la línea punteada de baseline */}
         {hasAnyBaseline && (
           <div className="ribbon-legend" style={{ marginTop: 8, justifyContent: 'flex-end', opacity: 0.7 }}>
             <div className="legend-item">
@@ -554,6 +586,7 @@ function BehaviorPercentBarChart({
 /* =================================
    Gráfico Historial (Single Behavior)
    ================================= */
+// Gráfico de línea que muestra la desviación diaria (7 días) de un comportamiento
 function BehaviorHistoryChart({
   data, // [{ date: "Lun 25", values: { Foraging: 10... } }]
   selectedBehavior,
@@ -581,12 +614,12 @@ function BehaviorHistoryChart({
 
   const color = colorForBehavior(selectedBehavior);
 
-  // Generate path points
+  // Puntos para la polilínea del gráfico
   const points = data
     .map((d, i) => `${sx(i)},${sy(d.values[selectedBehavior] || 0)}`)
     .join(" ");
 
-  // Generate Area path (for fill effect)
+  // Puntos para el área bajo la curva (relleno)
   const areaPoints = [
     `${sx(0)},${zeroY}`,
     points,
@@ -602,7 +635,7 @@ function BehaviorHistoryChart({
       >
         <rect x="0" y="0" width={width} height={height} className="plot-bg" />
 
-        {/* --- Grid & Axes --- */}
+        {/* Línea cero y eje Y */}
         <line
           x1={padding}
           y1={zeroY}
@@ -619,7 +652,7 @@ function BehaviorHistoryChart({
           stroke="#334155"
         />
 
-        {/* Y Axis Labels */}
+        {/* Etiquetas de eje Y (máximo positivo/negativo y cero) */}
         <text
           x={padding - 6}
           y={padding + 4}
@@ -648,7 +681,7 @@ function BehaviorHistoryChart({
           0%
         </text>
 
-        {/* X Axis Labels */}
+        {/* Etiquetas de eje X (días) */}
         {data.map((d, i) => (
           <text
             key={i}
@@ -662,9 +695,7 @@ function BehaviorHistoryChart({
           </text>
         ))}
 
-        {/* --- Data Visualization --- */}
-
-        {/* Area Gradient Fill */}
+        {/* Área bajo la curva con gradiente suave */}
         <defs>
           <linearGradient
             id={`grad-${selectedBehavior}`}
@@ -679,7 +710,7 @@ function BehaviorHistoryChart({
         </defs>
         <polygon points={areaPoints} fill={`url(#grad-${selectedBehavior})`} />
 
-        {/* The Line */}
+        {/* Línea principal de tendencia */}
         <polyline
           points={points}
           fill="none"
@@ -689,7 +720,7 @@ function BehaviorHistoryChart({
           strokeLinejoin="round"
         />
 
-        {/* The Dots & Interaction */}
+        {/* Puntos interactivos con tooltip de porcentaje */}
         {data.map((d, i) => {
           const val = d.values[selectedBehavior] || 0;
           const cx = sx(i);
@@ -707,7 +738,7 @@ function BehaviorHistoryChart({
                 strokeWidth="2"
                 style={{ transition: "r 0.2s" }}
               />
-              {/* Invisible Hit Target */}
+              {/* Área invisible para mejorar el hit de mouse */}
               <circle
                 cx={cx}
                 cy={cy}
@@ -718,7 +749,7 @@ function BehaviorHistoryChart({
                 onClick={() => setHoverIndex(i)}
                 style={{ cursor: "pointer" }}
               />
-              {/* Tooltip */}
+              {/* Tooltip con valor de desviación */}
               {isHovered && (
                 <g
                   transform={`translate(${cx}, ${cy - 12})`}
@@ -758,6 +789,8 @@ function BehaviorHistoryChart({
 /* =================================
    UI Helpers
    ================================= */
+
+// Badge redondeado que muestra comportamiento actual y confianza
 function BehaviorBadge({ behavior, confidence }) {
   if (!behavior)
     return (
@@ -774,15 +807,16 @@ function BehaviorBadge({ behavior, confidence }) {
   );
 }
 
+// Cinta horizontal de 24 bloques que representa el comportamiento dominante por hora
 function BehaviorRibbon({ timeline, untilHour = 23 }) {
-  // indexar por hora lo que venga del backend
+  // Indexar por hora lo que viene del backend
   const byHour = useMemo(() => {
     const m = new Map();
     (timeline || []).forEach(({ hour, behavior }) => m.set(hour, behavior));
     return m;
   }, [timeline]);
 
-  // construir la secuencia de horas esperada (0..untilHour)
+  // Construir la secuencia de horas esperada (0..untilHour)
   const hours = Array.from({ length: untilHour + 1 }, (_, h) => h);
 
   return (
@@ -810,7 +844,7 @@ function BehaviorRibbon({ timeline, untilHour = 23 }) {
         })}
       </div>
 
-      {/* Etiquetas bajo cada bloque */}
+      {/* Etiquetas horarias bajo cada bloque */}
       <div className="ribbon-labels">
         {hours.map((h) => (
           <div key={h} className="ribbon-time">
@@ -819,7 +853,7 @@ function BehaviorRibbon({ timeline, untilHour = 23 }) {
         ))}
       </div>
 
-      {/* Leyenda */}
+      {/* Leyenda de colores por comportamiento y estado "sin datos" */}
       <div className="ribbon-legend" style={{ marginTop: 8 }}>
         {BEHAVIORS.map((b) => (
           <div key={b} className="legend-item">
@@ -836,22 +870,21 @@ function BehaviorRibbon({ timeline, untilHour = 23 }) {
   );
 }
 
-
-
 /* =================================
    Panel de Reportes (Default: Hoy)
    ================================= */
+// Panel que muestra historial de reportes de bienestar y permite filtrarlos por fecha
 function ReportsPanel({ animalId }) {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(false);
   
-  // CHANGE 1: Initialize with Today's date instead of ""
-  // 'en-CA' is a trick to get YYYY-MM-DD format using the local timezone
+  // Estado de filtro inicializado con la fecha actual
+  // 'en-CA' se usa para obtener YYYY-MM-DD con la zona local
   const [filterDate, setFilterDate] = useState(
     new Date().toLocaleDateString('en-CA')
   );
 
-  // Load ALL history when animal changes
+  // Carga todos los reportes cuando cambia el animal seleccionado
   useEffect(() => {
     if (!animalId) return;
     setLoading(true);
@@ -861,7 +894,7 @@ function ReportsPanel({ animalId }) {
       .finally(() => setLoading(false));
   }, [animalId]);
 
-  // Filter logic
+  // Filtra los reportes por fecha seleccionada (si existe filtro)
   const displayedReports = useMemo(() => {
     if (!filterDate) return reports;
     return reports.filter(r => r.period_start.startsWith(filterDate));
@@ -882,7 +915,7 @@ function ReportsPanel({ animalId }) {
         </div>
         
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {/* Button to clear filter and show everything */}
+          {/* Botón para limpiar filtro y ver todo el historial */}
           {filterDate ? (
              <button 
                onClick={() => setFilterDate("")}
@@ -895,6 +928,7 @@ function ReportsPanel({ animalId }) {
              <span style={{ fontSize: 11, color: '#64748b' }}>Mostrando todo</span>
           )}
 
+          {/* Selector de fecha para filtrar reportes */}
           <input 
             type="date"
             value={filterDate}
@@ -948,6 +982,7 @@ function ReportsPanel({ animalId }) {
                       )}
                     </td>
                     <td style={{ padding: 8, textAlign: 'right' }}>
+                      {/* Botón que dispara la descarga de PDF del reporte */}
                       <button
                         onClick={() => downloadPDF(r.id)}
                         className="link-btn"
@@ -968,23 +1003,26 @@ function ReportsPanel({ animalId }) {
 }
 
 /* =================================
-   App Principal
+   App Principal (Dashboard)
    ================================= */
+// Componente raíz del dashboard (protegido por login en main.jsx)
 export default function App() {
   const { user, logout } = useAuth();
   const animals = useAnimals();
   const [selectedId, setSelectedId] = useState(null);
   
+  // Animal seleccionado en base a la lista y el ID elegido
   const selected = useMemo(
     () => animals.find((a) => a.animal_id === selectedId),
     [animals, selectedId]
   );
   
+  // Selecciona automáticamente el primer animal cuando la lista se carga
   useEffect(() => {
     if (!selectedId && animals[0]) setSelectedId(animals[0].animal_id);
   }, [animals, selectedId]);
 
-  // Alertas
+  // Estado de alcance de alertas: solo animal seleccionado o todos
   const [alertScope, setAlertScope] = useState("selected");
   const toggleScope = useCallback(() => {
     setAlertScope((s) => (s === "selected" ? "all" : "selected"));
@@ -1000,30 +1038,33 @@ export default function App() {
   const [trayOpen, setTrayOpen] = useState(false);
   const bellRef = useRef(null);
 
+  // Marca todas las alertas visibles como leídas (bulk ACK optimista)
   const markAllRead = useCallback(async () => {
-      // 1. Get IDs of visible unread items
+      // 1. Obtener IDs de las alertas no leídas visibles
       const ids = notifications.filter((n) => n.unread).map((n) => String(n.id));
       if (!ids.length) return;
 
-      // 2. Optimistic Update (Clear UI immediately)
+      // 2. Actualización optimista: limpiar estado en UI
       setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
 
       try {
-        // 3. Send to Backend
+        // 3. Llamar backend para hacer ACK masivo
         const res = await postJSON("/api/alerts/ack/bulk", { ids });
-        console.log("Backend Ack Result:", res); // Check browser console for this!
+        console.log("Backend Ack Result:", res); // Debug en consola
       } catch (err) {
         console.error("Ack failed", err);
-        // Optional: Revert optimistic update here if needed
+        // Opcional: revertir el estado si algo falla
       } finally {
-        // 4. Force Reload from Server to ensure sync
+        // 4. Recargar desde el servidor para asegurar sincronización
         await reloadAlerts();
       }
     }, [notifications, setNotifications, reloadAlerts]);
 
+  // Marca una alerta individual como leída (ACK)
   async function ackAlert(id) {
     try {
       const sid = String(id);
+      // Actualización optimista en memoria
       setNotifications((prev) =>
         prev.map((n) =>
           String(n.id) === sid ? { ...n, unread: false } : n
@@ -1036,8 +1077,10 @@ export default function App() {
     }
   }
 
-  // Sidebar Key Nav
+  // Referencia a la lista lateral para navegación por teclado
   const listRef = useRef(null);
+
+  // Navegación con flechas arriba/abajo en la lista de animales
   const handleKeyDown = useCallback((e) => {
       const idx = Math.max(0, animals.findIndex((i) => i.animal_id === selectedId));
       if (e.key === "ArrowDown") {
@@ -1053,6 +1096,8 @@ export default function App() {
       }
     }, [animals, selectedId]
   );
+
+  // Asegura que el item seleccionado sea visible en el scroll de la lista
   const scrollItemIntoView = (index) => {
     const el = listRef.current?.querySelector(`[data-index="${index}"]`);
     el?.scrollIntoView({ block: "nearest" });
@@ -1060,16 +1105,17 @@ export default function App() {
 
   // --- DATOS DEL DASHBOARD ---
 
-  // 1. KPI
+  // 1. KPIs principales: comportamiento actual y timeline de hoy
   const currentBehavior = useCurrentBehavior(selectedId);
   const todayTimeline = useBehaviorTimeline(selectedId, todayISO);
 
-  // 2. Gráfico % Día (Bars)
+  // 2. Gráfico % Día (barras vs baseline)
   const [chartOffset, setChartOffset] = useState(0);
   const maxOffset = 6;
   const totalOffsets = maxOffset + 1;
   useEffect(() => setChartOffset(0), [selectedId]);
 
+  // Helper para calcular fecha N días atrás en ISO
   const dateISOdaysAgo = (n) => {
     const d = new Date();
     d.setDate(d.getDate() - n);
@@ -1078,6 +1124,7 @@ export default function App() {
   const chartDateISO = useMemo(() => dateISOdaysAgo(chartOffset), [chartOffset]);
   const dayDistribution = useBehaviorDayDistribution(selectedId, chartDateISO);
   
+  // Mapea la respuesta de la API a un arreglo de {behavior, pct} para el gráfico
   const chartPercents = useMemo(() => {
     const src =
       dayDistribution?.behavior_percentages_vs_baseline ??
@@ -1086,33 +1133,32 @@ export default function App() {
     return BEHAVIORS.map((b) => ({ behavior: b, pct: src[b] || 0 }));
   }, [dayDistribution]);
 
-
+  // Baseline transformado a arreglo para el gráfico de barras
   const baselinePercents = useMemo(() => {
     const baseMap = selected?.baseline_behavior_pct || {};
     return BEHAVIORS.map((b) => ({ behavior: b, pct: baseMap[b] ?? 0 }));
   }, [selected]);
 
-  // 3. Gráfico Historial (Lines)
-  // FIX: Stabilize baselineRaw to prevent infinite fetches in useDeviationHistory
+  // 3. Gráfico Historial (línea de desviación 7 días)
+  // baselineRaw estabiliza el objeto para evitar recargas infinitas en el hook
   const baselineRaw = useMemo(() => selected?.baseline_behavior_pct || {}, [selected]);
   const historyData = useDeviationHistory(selectedId, baselineRaw);
   
-  // Estado para el selector del gráfico de historial
-  const [historyBehavior, setHistoryBehavior] = useState("Stereotypy"); // Default to critical behavior
-  // Reset behavior when animal changes? Maybe not necessary, but safe.
+  // Estado para el selector de comportamiento del gráfico de historial
+  const [historyBehavior, setHistoryBehavior] = useState("Stereotypy"); // Comportamiento crítico por defecto
+  // Reinicia comportamiento seleccionado cuando cambia el animal
   useEffect(() => setHistoryBehavior("Stereotypy"), [selectedId]);
 
-
-  // Helpers UI
+  // Helpers de UI para cambiar el día del gráfico de barras
   const chartDateLabel = useMemo(() => labelFromISO(chartDateISO), [chartDateISO]);
   const goOlderDay = () => setChartOffset((o) => (o + 1) % totalOffsets);
   const goNewerDay = () => setChartOffset((o) => (o - 1 + totalOffsets) % totalOffsets);
-
 
   console.log("Current API BASE:", import.meta.env.VITE_API_BASE_URL || "Fallback used");
 
   return (
     <div className="layout">
+      {/* Sidebar de animales */}
       <aside className="sidebar" role="listbox" tabIndex={0} onKeyDown={handleKeyDown} ref={listRef}>
         {animals.map((a, idx) => {
           const isSelected = a.animal_id === selectedId;
@@ -1133,6 +1179,7 @@ export default function App() {
         })}
       </aside>
 
+      {/* Panel de detalle principal */}
       <main className="detail">
         <header className="detail-header">
           <h1 className="detail-title">{selected?.nombre || "—"}</h1>
@@ -1143,16 +1190,19 @@ export default function App() {
                 {user?.full_name || user?.username}
               </span>
             )}
+            {/* Botón de notificaciones (campana) */}
             <button className="icon-btn notif-bell" onClick={() => setTrayOpen((v) => !v)} ref={bellRef}>
               <BellIcon filled={unreadCount > 0} />
               {unreadCount > 0 && <span className="badge">{unreadCount}</span>}
             </button>
+            {/* Botón de logout */}
             <button className="icon-btn logout-btn" onClick={logout}>
               <LogoutIcon />
             </button>
           </div>
         </header>
 
+        {/* Bandeja flotante de notificaciones */}
         <NotificationTray
           open={trayOpen}
           onClose={() => setTrayOpen(false)}
@@ -1164,7 +1214,9 @@ export default function App() {
           onToggleScope={toggleScope}
         />
 
+        {/* Contenido principal del dashboard */}
         <section className="detail-body">
+          {/* Tarjetas de resumen rápido */}
           <div className="detail-cards">
             <div className="card">
               <div className="card-label">ID del animal</div>
@@ -1187,7 +1239,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* Cinta (Hoy) */}
+          {/* Cinta de comportamiento de hoy (por hora) */}
           <div className="plot-panel" style={{ marginTop: 16 }}>
             <div className="plot-header">
               <div>
@@ -1200,8 +1252,7 @@ export default function App() {
             </div>
           </div>
 
-
-          {/* Bar Chart (Day Distribution) */}
+          {/* Gráfico de barras: % del día vs baseline */}
           <div className="plot-panel" style={{ marginTop: 16 }}>
             <div className="plot-header">
               <div>
@@ -1234,7 +1285,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* Line Chart (History Deviation) */}
+          {/* Gráfico de línea: historial de desviación (7 días) */}
           <div className="plot-panel" style={{ marginTop: 16 }}>
             <div className="plot-header">
               <div>
@@ -1242,7 +1293,7 @@ export default function App() {
                 <div className="plot-subtitle">Variación respecto al baseline (7 días)</div>
               </div>
               
-              {/* SELECTOR DE COMPORTAMIENTO PARA EL CHART */}
+              {/* Selector de comportamiento para el gráfico de historial */}
               <div className="plot-actions" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', maxWidth: '50%' }}>
                 {BEHAVIORS.map(b => {
                    const isActive = historyBehavior === b;
@@ -1283,7 +1334,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* Reports History Panel */}
+          {/* Panel de historial de reportes y descarga de PDF */}
           <ReportsPanel animalId={selectedId} />
 
         </section>
