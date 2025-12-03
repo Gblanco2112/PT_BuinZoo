@@ -4,17 +4,28 @@ from database import Base
 
 
 class User(Base):
+    """
+    Modelo de usuario del sistema.
+    Almacena credenciales y metadatos básicos.
+    """
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True, nullable=False)
     email = Column(String, unique=True, index=True, nullable=True)
     hashed_password = Column(String, nullable=False)
-    scopes = Column(String, nullable=True)
+    scopes = Column(String, nullable=True)  # CSV de scopes/roles (ej: "keeper,admin")
     full_name = Column(String, nullable=True)
 
 
 class WelfareReport(Base):
+    """
+    Reporte de bienestar animal (agregado diario u otro período).
+    Contiene:
+      - rango de tiempo (period_start, period_end)
+      - conteo de alertas
+      - detalles en formato JSON (behavior_hourly, alerts, etc.)
+    """
     __tablename__ = "welfare_reports"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -39,27 +50,35 @@ from datetime import datetime
 
 class BehaviorEvent(Base):
     """
-    One row per model output: "at ts, this animal is doing BEHAVIOR with CONFIDENCE".
-    This is what your real pipeline will write to.
+    Evento de comportamiento (dato crudo de la IA).
+    Cada fila representa:
+      - un animal
+      - un timestamp (ts)
+      - un tipo de comportamiento detectado
+      - la confianza del modelo
     """
     __tablename__ = "behavior_events"
 
     id = Column(Integer, primary_key=True, index=True)
     animal_id = Column(String, index=True)
-    ts = Column(DateTime, index=True)           # timezone-aware datetime in practice
-    behavior = Column(String, index=True)       # e.g. "Foraging", "Resting", ...
+    ts = Column(DateTime, index=True)           # En práctica debería ser timezone-aware
+    behavior = Column(String, index=True)       # Ej: "Foraging", "Resting", ...
     confidence = Column(Float, nullable=True)
 
 
 class Alert(Base):
     """
-    Persistent alerts, instead of random ones in memory.
-    Your rule engine (or synthetic script) creates these.
+    Alerta persistente generada por la lógica de negocio.
+    Guarda:
+      - tipo de alerta (comportamiento_anormal, poca_alimentacion, etc.)
+      - severidad (baja/media/alta)
+      - resumen descriptivo
+      - estado (open/closed)
     """
     __tablename__ = "alerts"
 
     id = Column(Integer, primary_key=True, index=True)
-    alert_id = Column(String, unique=True, index=True)  # e.g. "a-001-20250301-00"
+    alert_id = Column(String, unique=True, index=True)  # Ej: "a-001-20250301-00"
     animal_id = Column(String, index=True)
     tipo = Column(String)
     severidad = Column(String)

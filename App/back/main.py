@@ -1,4 +1,3 @@
-# main.py
 import asyncio
 from datetime import datetime
 
@@ -11,7 +10,7 @@ from auth_routes import router as auth_router
 from zoo_routes import (
     router as zoo_router,
     ANIMALS,
-    TZ,  # timezone shared with zoo_routes
+    TZ,  # timezone compartida con zoo_routes
     create_or_update_daily_report,
 )
 from auth import hash_password
@@ -22,18 +21,21 @@ app = FastAPI(title="Zoo Behavior API", version="1.0.0")
 
 async def reports_background_loop():
   """
-  Very simple scheduler: every hour, recompute today's reports.
+  Bucle en background muy simple:
+  - Cada cierto intervalo (1 hora) recalcula los reportes diarios del día actual.
+  - Se ejecuta mientras la app esté levantada.
   """
   while True:
     await generate_reports_for_today()
-    # sleep for 1 hour; you can change to 24*3600 for once per day
+    # dormir 1 hora; se puede cambiar a 24*3600 para una vez al día
     await asyncio.sleep(60 * 60)
 
 
 async def generate_reports_for_today():
   """
-  Generate/update today's daily report for every animal.
-  Backend-only: no frontend involvement.
+  Genera/actualiza el reporte diario de bienestar para cada animal del listado ANIMALS
+  correspondiente a la fecha actual en la zona horaria del zoo.
+  Solo backend: el frontend no participa en este flujo.
   """
   db = SessionLocal()
   try:
@@ -52,15 +54,15 @@ async def generate_reports_for_today():
 @app.on_event("startup")
 async def on_startup():
   """
-  Startup hook:
-    - Create all tables in the current DB (Postgres in your case)
-    - Seed a dev user if it doesn't exist
-    - Start the background report generator
+  Hook de inicio de la aplicación:
+    - Crea todas las tablas del modelo en la base de datos (Postgres)
+    - Inserta un usuario de desarrollo si no existe (semilla)
+    - Lanza la tarea en background que genera reportes diarios de bienestar
   """
-  # 1) Ensure tables exist in the target DB (Postgres or SQLite, depending on DATABASE_URL)
+  # 1) Asegura que las tablas existen en la base de datos destino
   Base.metadata.create_all(bind=engine)
 
-  # 2) Seed dev user
+  # 2) Seed usuario de desarrollo (keeper)
   db = SessionLocal()
   try:
     u = (
@@ -82,21 +84,23 @@ async def on_startup():
   finally:
     db.close()
 
-  # 3) Start background task for daily welfare reports
+  # 3) Inicia tarea en background para reportes diarios
   asyncio.create_task(reports_background_loop())
 
 
 # main.py
 
+# Orígenes permitidos para CORS (frontend local y en Docker)
 origins = [
     "http://localhost:5173",    # Local Dev (npm run dev)
     "http://127.0.0.1:5173",    # Local Dev IP
-    "http://localhost",         # Docker Frontend (Port 80) <--- NEW
-    "http://127.0.0.1",         # Docker Frontend IP <--- NEW
-    # If you access from another PC, add that IP too:
+    "http://localhost",         # Frontend en Docker (puerto 80)
+    "http://127.0.0.1",         # Frontend en Docker IP
+    # Si accedes desde otro PC, agrega también esa IP:
     # "http://192.168.1.50",
 ]
 
+# Middleware CORS para permitir llamadas desde el frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -105,11 +109,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 @app.get("/")
 def root():
+  """
+  Endpoint simple de healthcheck.
+  Permite verificar que el backend está levantado.
+  """
   return {"status": "ok"}
 
 
-# Routers
+# Routers (se montan módulos de rutas)
 app.include_router(auth_router)
 app.include_router(zoo_router, prefix="/api")

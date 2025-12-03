@@ -1,4 +1,3 @@
-# zoo_routes.py
 from datetime import datetime, date, time, timedelta
 from typing import List, Optional, Dict
 import json
@@ -22,12 +21,15 @@ from settings import settings
 
 router = APIRouter(tags=["zoo"])
 
+# Zona horaria del zoo (Chile)
 TZ = ZoneInfo("America/Santiago")
+# Periodo de muestreo en segundos (configurado en settings)
 TS = settings.TS_SECONDS
 
 
-# ------------------ Static animals & behaviors ------------------
+# ------------------ Animales y comportamientos estáticos ------------------
 
+# Porcentaje de comportamiento esperado (baseline) para un día completo
 BASELINE_BEHAVIOR_PCT = {
     "default": {
         "Foraging": 8,
@@ -39,6 +41,7 @@ BASELINE_BEHAVIOR_PCT = {
     },
 }
 
+# Lista estática de animales usada tanto por el frontend como por el generador sintético
 ANIMALS: List[schemas.Animal] = [
     schemas.Animal(
         animal_id="a-001",
@@ -50,50 +53,61 @@ ANIMALS: List[schemas.Animal] = [
 ]
 
 
-# Must match the labels your frontend expects
+# Debe coincidir con los labels que espera el frontend
 BEHAVIORS = ["Foraging", "Resting", "Locomotion", "Social", "Play", "Stereotypy"]
 
 
 class AckBulkBody(BaseModel):
+    """
+    Cuerpo del request para hacer acknowledge masivo de alertas.
+    """
     ids: List[str]
 
 
 
 
 # =========================================================
-# PDF HELPER CLASS
+# CLASE HELPER PARA PDF
 # =========================================================
 class WelfarePDF(FPDF):
+    """
+    Clase utilitaria para generar PDFs de reportes de bienestar.
+    Define encabezado y helpers para secciones (titulo/cuerpo).
+    """
     def header(self):
-        # Logo or Title
+        # Logo o título del documento
         self.set_font('Helvetica', 'B', 16)
         self.cell(0, 10, 'Reporte Diario de Bienestar - Buin Zoo', border=False, align='C')
         self.ln(15)
 
     def chapter_title(self, label):
+        # Título de sección con fondo resaltado
         self.set_font('Helvetica', 'B', 12)
-        self.set_fill_color(200, 220, 255)  # Light blue
+        self.set_fill_color(200, 220, 255)  # Azul claro
         self.cell(0, 10, label, border=0, fill=True, align='L')
         self.ln(10)
 
     def chapter_body(self, text):
+        # Cuerpo de texto de una sección
         self.set_font('Helvetica', '', 10)
         self.multi_cell(0, 8, text)
         self.ln()
 
 
-# ------------------ Public API: animals ------------------
+# ------------------ API pública: animales ------------------
 
 
 @router.get("/animals", response_model=List[schemas.Animal])
 def list_animals(current=Depends(get_current_user)):
     """
-    Static list of animals used by the frontend and the synthetic generator.
+    Devuelve la lista estática de animales usada por:
+      - Frontend
+      - Script sintético de generación de eventos
     """
     return ANIMALS
 
 
-# ------------------ Public API: behavior ------------------
+# ------------------ API pública: comportamientos ------------------
 
 
 @router.get("/behavior/current")
@@ -103,10 +117,9 @@ def behavior_current(
     current=Depends(get_current_user),
 ):
     """
-    Current behavior for an animal.
-
-    Reads the latest BehaviorEvent from the DB. This is exactly how the backend
-    behaves whether the data comes from the synthetic script or a real pipeline.
+    Devuelve el comportamiento actual para un animal.
+    - Lee el último BehaviorEvent de la base de datos
+    - Es exactamente el mismo flujo tanto para datos sintéticos como reales
     """
     ev = (
         db.query(models.BehaviorEvent)
@@ -116,7 +129,7 @@ def behavior_current(
     )
 
     if not ev:
-        # Frontend already handles empty/error cases gracefully.
+        # El frontend ya maneja correctamente el caso sin datos
         raise HTTPException(status_code=404, detail="No behavior data for this animal")
 
     return {
@@ -135,27 +148,29 @@ def behavior_timeline(
     current=Depends(get_current_user),
 ):
     """
-    For a given animal and date, return the dominant behavior per hour.
+    Para un animal y una fecha dada, devuelve el comportamiento dominante por hora.
 
-    For past days: returns up to 24 hours.
-    For today: ONLY returns completed hours (each hour is finalized once the next
-    hour starts), so the strip updates at most once per hour.
+    Para días pasados:
+      - Devuelve hasta 24 horas.
+    Para el día actual:
+      - Solo devuelve horas COMPLETADAS (la hora se cierra cuando comienza la siguiente).
+      - El frontend verá actualizaciones a lo más una vez por hora.
     """
     now_local = datetime.now(TZ)
 
-    # If no date is given, assume "today" in zoo local time
+    # Si no se envía 'date', asumimos "hoy" en la zona horaria del zoo
     req_date = now_local.date() if not date else datetime.strptime(date, "%Y-%m-%d").date()
 
-    # Future day -> no data
+    # Día futuro -> no hay datos
     if req_date > now_local.date():
         return []
 
     day_start = datetime.combine(req_date, time.min, tzinfo=TZ)
     day_end = day_start + timedelta(days=1)
 
-    # For querying events:
-    #  - Past days: full day
-    #  - Today: up to "now" (we'll still only *use* completed hours)
+    # Para consultar eventos:
+    #  - Días pasados: día completo
+    #  - Hoy: hasta "ahora" (aunque luego solo usamos horas completas)
     query_end = min(day_end, now_local) if req_date == now_local.date() else day_end
 
     events = (
@@ -169,26 +184,26 @@ def behavior_timeline(
     )
 
     if not events:
-        # Frontend has a deterministic fallback if this is empty
+        # El frontend tiene un fallback determinista si esto viene vacío
         return []
 
-    # Bucket events per hour
+    # Agrupar eventos por hora {hora -> [behavior, ...]}
     buckets: Dict[int, List[str]] = {}
     for ev in events:
         h = ev.ts.astimezone(TZ).hour
         buckets.setdefault(h, []).append(ev.behavior)
 
-    # Decide up to which hour we expose data
+    # Determinar hasta qué hora se expone la información
     if req_date == now_local.date():
-        # Only show COMPLETED hours for today
-        # e.g. at 13:35 -> last_completed_hour = 12 (we show 0..12)
+        # Solo mostramos HORAS COMPLETADAS para el día actual
+        # ej. a las 13:35 -> last_completed_hour = 12 (mostramos 0..12)
         last_completed_hour = now_local.hour - 1
         if last_completed_hour < 0:
-            # Day just started, no completed hours yet
+            # El día recién parte, no hay horas completas aún
             return []
-        end_hour = last_completed_hour + 1  # range() end is exclusive
+        end_hour = last_completed_hour + 1  # fin de range() es exclusivo
     else:
-        # Past days -> full 24h
+        # Días pasados -> las 24 horas
         end_hour = 24
 
     rows = []
@@ -196,7 +211,7 @@ def behavior_timeline(
         if h not in buckets:
             continue
         behaviors = buckets[h]
-        # Dominant behavior in that hour
+        # Comportamiento dominante en esa hora
         dominant = max(set(behaviors), key=behaviors.count)
         rows.append({"hour": h, "behavior": dominant})
 
@@ -263,7 +278,8 @@ def behavior_day_distribution(
         }
 
     # -------- NUEVO: % Vs Baseline del día completo ----------
-    per_hour = 3600.0 / ts                 # muestras/​hora (puede ser float)
+    # Se calcula cuántas muestras teóricas habría en un día perfecto
+    per_hour = 3600.0 / ts                 # muestras por hora (puede ser float)
     baseline_day = 24.0 * per_hour         # muestras teóricas en 24h
 
     if baseline_day <= 0:
@@ -347,7 +363,7 @@ def behavior_summary_last_days(
     }
 
 
-# ------------------ Public API: metrics & alerts ------------------
+# ------------------ API pública: métricas y alertas ------------------
 
 
 @router.get("/metrics")
@@ -356,8 +372,9 @@ def metrics(
     current=Depends(get_current_user),
 ):
     """
-    Simple metrics used by the dashboard.
-    Alerts are read from the Alert table (open = estado == 'open').
+    Métricas simples usadas por el dashboard.
+    - Lectura del número de alertas abiertas
+    - Uptime simulado (mock)
     """
     open_count = (
         db.query(models.Alert)
@@ -365,7 +382,7 @@ def metrics(
         .count()
     )
     return {
-        "uptime_days": 12,  # still mock; you can make this real later
+        "uptime_days": 12,  # mock; se puede hacer real después
         "alerts_open": open_count,
         "animals": len(ANIMALS),
     }
@@ -378,15 +395,16 @@ def ack_bulk(
     current=Depends(get_current_user),
 ):
     """
-    Bulk acknowledge alerts. Includes debug prints to verify ID matching.
+    Marca como cerradas múltiples alertas al mismo tiempo.
+    También realiza prints en consola para debug de IDs actualizados.
     """
     if not body.ids:
         return {"status": "ok", "acked_count": 0}
 
-    # Debug: Print what we received
+    # Debug: IDs recibidos
     print(f"[ACK-BULK] Request to close {len(body.ids)} alerts.")
     
-    # Perform the update
+    # Actualizar estado en la base de datos
     updated_count = (
         db.query(models.Alert)
         .filter(models.Alert.alert_id.in_(body.ids))
@@ -407,7 +425,8 @@ def list_alerts(
     current=Depends(get_current_user),
 ):
     """
-    List alerts from the DB. Shape matches the previous mock-based alerts.
+    Lista las alertas persistidas en la base de datos.
+    Mantiene la misma forma que el mock usado originalmente por el frontend.
     """
     q = db.query(models.Alert)
     if animal_id:
@@ -435,7 +454,7 @@ def ack_one(
     current=Depends(get_current_user),
 ):
     """
-    Acknowledge a single alert by setting estado='closed' in the DB.
+    Marca una sola alerta como 'closed' en la base de datos.
     """
     alert = db.query(models.Alert).filter(models.Alert.alert_id == alert_id).first()
     if not alert:
@@ -444,7 +463,7 @@ def ack_one(
     db.commit()
     return {"status": "ok", "alert_id": alert_id}
 
-# ------------------ Welfare reports (backend-only generation) ------------------
+# ------------------ Reportes de bienestar (generación backend) ------------------
 
 
 def create_or_update_daily_report(
@@ -454,14 +473,16 @@ def create_or_update_daily_report(
     generated_by: str = "system",
 ) -> models.WelfareReport:
     """
-    Create or update a daily welfare report for one animal on a given date.
-    Uses real alerts from the DB and stores behavior per hour in details_json.
+    Crea o actualiza el reporte diario de bienestar para un animal y una fecha.
+    Usa:
+      - Alertas reales desde la tabla Alert
+      - Eventos de comportamiento para construir resumen horario y diario
     """
-    # 1) Period for that day in local time
+    # 1) Rango de tiempo para ese día en hora local
     period_start = datetime.combine(report_date, time.min, tzinfo=TZ)
     period_end = period_start + timedelta(days=1)
 
-    # 2) Alerts for that animal and day, from the DB
+    # 2) Alertas para ese animal y día, desde la base de datos
     alert_rows = (
         db.query(models.Alert)
         .filter(
@@ -486,10 +507,11 @@ def create_or_update_daily_report(
             }
         )
 
+    # Solo contamos alertas abiertas en alerts_count
     open_alerts = [a for a in alert_rows if a.estado == "open"]
     alerts_count = len(open_alerts)
 
-    # 3) Behavior events for that day, per hour
+    # 3) Eventos de comportamiento para ese día, por hora
     events = (
         db.query(models.BehaviorEvent)
         .filter(
@@ -500,13 +522,13 @@ def create_or_update_daily_report(
         .all()
     )
 
-    # bucket events per hour: {hour -> [behavior, ...]}
+    # bucket de eventos por hora: {hour -> [behavior, ...]}
     hour_buckets: Dict[int, List[str]] = {h: [] for h in range(24)}
     for ev in events:
         h = ev.ts.astimezone(TZ).hour
         hour_buckets[h].append(ev.behavior)
 
-    # build per-hour summary and simple daily counts
+    # Construir resumen por hora y conteos diarios simples
     behavior_hourly: List[Dict] = []
     total_counts: Dict[str, int] = {}
 
@@ -539,7 +561,7 @@ def create_or_update_daily_report(
             }
         )
 
-    # 4) Build details_json payload
+    # 4) Construir payload para details_json
     details = {
         "alerts": alerts,
         "open_alerts_count": alerts_count,
@@ -547,7 +569,7 @@ def create_or_update_daily_report(
         "behavior_daily_counts": total_counts,
     }
 
-    # 5) Insert or update report row
+    # 5) Insertar o actualizar fila de reporte
     existing = (
         db.query(models.WelfareReport)
         .filter(
@@ -591,7 +613,7 @@ def list_reports(
     current=Depends(get_current_user),
 ):
     """
-    Lista de reportes de bienestar (los últimos primero).
+    Devuelve la lista de reportes de bienestar (ordenados del más reciente al más antiguo).
     Solo lectura para el frontend.
     """
     q = db.query(models.WelfareReport)
@@ -623,7 +645,7 @@ def list_reports(
 
 
 # =========================================================
-# NEW ENDPOINT
+# ENDPOINT NUEVO: DESCARGA PDF DE REPORTE
 # =========================================================
 @router.get("/reports/{report_id}/pdf")
 def download_report_pdf(
@@ -632,19 +654,22 @@ def download_report_pdf(
     current=Depends(get_current_user),
 ):
     """
-    Generates a PDF file with dynamic row heights for detailed alerts.
+    Genera un archivo PDF para un reporte específico, con:
+      - Cabecera con metadatos del reporte
+      - Resumen de comportamiento
+      - Tabla de alertas con alturas de fila dinámicas (texto largo se envuelve)
     """
-    # 1. Fetch the report
+    # 1. Obtener el reporte
     report = db.query(models.WelfareReport).filter(models.WelfareReport.id == report_id).first()
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
 
-    # 2. Parse details
+    # 2. Parsear detalles
     data = json.loads(report.details_json) if report.details_json else {}
     alerts = data.get("alerts", [])
     behavior_counts = data.get("behavior_daily_counts", {})
     
-    # Resolve Animal Name
+    # Resolución de nombre y especie del animal
     animal_name = "Desconocido"
     species = "Desconocido"
     for a in ANIMALS:
@@ -653,18 +678,18 @@ def download_report_pdf(
             species = a.especie
             break
 
-    # 3. Create PDF
+    # 3. Crear PDF
     pdf = WelfarePDF()
     pdf.add_page()
 
-    # --- INFO SECTION ---
+    # --- SECCIÓN INFO ---
     pdf.set_font('Helvetica', '', 11)
     pdf.cell(0, 8, f"ID Reporte: #{report.id}   |   Generado el: {report.generated_at.strftime('%Y-%m-%d %H:%M')}", ln=True)
     pdf.cell(0, 8, f"Animal: {animal_name} ({species})", ln=True)
     pdf.cell(0, 8, f"Fecha del Reporte: {report.period_start.strftime('%Y-%m-%d')}", ln=True)
     pdf.ln(10)
 
-    # --- SUMMARY SECTION ---
+    # --- SECCIÓN RESUMEN ---
     pdf.chapter_title(f"Resumen General")
     total_events = sum(behavior_counts.values())
     alert_count = len(alerts)
@@ -675,11 +700,11 @@ def download_report_pdf(
     )
     pdf.chapter_body(summary_text)
 
-    # --- BEHAVIOR STATS ---
+    # --- ESTADÍSTICAS DE COMPORTAMIENTO ---
     pdf.chapter_title("Distribución de Comportamiento (Top Actividades)")
     if total_events > 0:
         pdf.set_font('Helvetica', 'B', 10)
-        # Table Header
+        # Encabezado de tabla
         pdf.cell(80, 8, "Comportamiento", border=1)
         pdf.cell(40, 8, "Eventos", border=1)
         pdf.cell(40, 8, "Porcentaje", border=1, ln=True)
@@ -697,17 +722,17 @@ def download_report_pdf(
     
     pdf.ln(10)
 
-    # --- ALERTS SECTION (UPDATED FOR WRAPPING TEXT) ---
+    # --- SECCIÓN DE ALERTAS (FILAS CON ALTO DINÁMICO) ---
     pdf.chapter_title(f"Detalle de Alertas ({alert_count})")
     
     if alerts:
-        # Define Column Widths (Total ~190mm)
+        # Definir anchos de columna (total ~190mm)
         w_time = 25
         w_type = 50
         w_sev = 25
         w_desc = 90
 
-        # Table Header
+        # Encabezado de tabla
         pdf.set_font('Helvetica', 'B', 9)
         pdf.set_fill_color(240, 240, 240)
         pdf.cell(w_time, 8, "Hora", border=1, fill=True)
@@ -715,10 +740,10 @@ def download_report_pdf(
         pdf.cell(w_sev, 8, "Severidad", border=1, fill=True)
         pdf.cell(w_desc, 8, "Detalle", border=1, fill=True, ln=True)
         
-        pdf.set_font('Helvetica', '', 8) # Smaller font to fit more text
+        pdf.set_font('Helvetica', '', 8) # Fuente más pequeña para caber más texto
         
         for alert in alerts:
-            # Parse timestamp
+            # Parsear timestamp
             ts_str = alert.get("ts", "")
             time_str = "N/A"
             if ts_str:
@@ -730,40 +755,39 @@ def download_report_pdf(
 
             tipo = alert.get("tipo", "General")
             severity = alert.get("severidad", "media").upper()
-            # NO TRUNCATION HERE: We take the full string
+            # Usamos el string completo (no truncar)
             summary = alert.get("resumen", "")
 
-            # --- DYNAMIC ROW HEIGHT LOGIC ---
-            # 1. Save current position
+            # --- LÓGICA DE ALTO DINÁMICO ---
+            # 1. Guardar posición actual
             x_start = pdf.get_x()
             y_start = pdf.get_y()
 
-            # 2. Print the 'Detail' column using MultiCell first to see how tall it gets
-            # We move the cursor to the right to print the last column
+            # 2. Escribir columna "Detalle" con MultiCell para calcular altura
             pdf.set_xy(x_start + w_time + w_type + w_sev, y_start)
             pdf.multi_cell(w_desc, 8, summary, border=1, align='L')
             
-            # 3. Calculate the height of the row based on where the cursor ended up
+            # 3. Calcular altura de la fila
             y_end = pdf.get_y()
             row_height = y_end - y_start
 
-            # 4. Go back and print the other columns with that calculated height
+            # 4. Volver y escribir las otras columnas usando esa altura
             pdf.set_xy(x_start, y_start)
             pdf.cell(w_time, row_height, time_str, border=1)
             pdf.cell(w_type, row_height, tipo, border=1)
             pdf.cell(w_sev, row_height, severity, border=1)
 
-            # 5. Move cursor to the next line (y_end) for the next iteration
+            # 5. Avanzar a la siguiente línea
             pdf.set_xy(x_start, y_end)
 
-            # Page break check (simple)
+            # Chequeo simple para salto de página
             if pdf.get_y() > 270: 
                 pdf.add_page()
 
     else:
         pdf.chapter_body("No se detectaron alertas durante este periodo. El animal se encuentra estable.")
 
-    # 4. Return as a stream
+    # 4. Devolver como stream
     pdf_bytes = pdf.output()
     buffer = io.BytesIO(pdf_bytes)
     
@@ -778,36 +802,41 @@ def download_report_pdf(
 
 
 # =========================================================
-# NEW: INTELLIGENT ALERT LOGIC
+# LÓGICA INTELIGENTE DE ALERTAS
 # =========================================================
 
 def check_and_create_alerts(db: Session, animal_id: str, behavior: str, ts: datetime):
     """
-    Calculates accumulated percentage based on TIME ELAPSED vs SAMPLING PERIOD.
-    This ensures that if data is missing, it reflects in the stats.
+    Evalúa el comportamiento acumulado en el día (en %) contra el baseline
+    usando tiempo transcurrido desde medianoche y periodo de muestreo.
+
+    Si detecta desviaciones significativas:
+      - Crea una alerta nueva (si no existe una abierta del mismo tipo)
+      - Devuelve la instancia de la alerta
+    En caso contrario devuelve None.
     """
     
-    # --- CONFIGURATION ---
+    # --- CONFIGURACIÓN ---
     DEFAULT_TOLERANCE = 5.0
-    SAMPLING_PERIOD_SECONDS = TS  # 5 Minutes (Must match your pipeline/simulation)
-    MIN_HOURS_TO_ANALYZE = 1       # Don't alert in the first hour of the day
+    SAMPLING_PERIOD_SECONDS = TS  # Debe coincidir con el pipeline/simulación
+    MIN_HOURS_TO_ANALYZE = 1      # No alertar en la primera hora del día
 
-    # 1. Get Baseline
+    # 1. Baseline esperado para el comportamiento
     baseline_map = BASELINE_BEHAVIOR_PCT["default"]
     baseline_val = baseline_map.get(behavior, 0.0)
 
-    # 2. Calculate Theoretical Total Samples (Perfect Pipeline)
-    # How many samples SHOULD we have received since midnight?
+    # 2. Cálculo de cantidad teórica de muestras (pipeline perfecto)
+    # Cuántas muestras DEBERÍAMOS haber recibido desde medianoche
     today_midnight = datetime.combine(ts.date(), time.min, tzinfo=TZ)
     seconds_since_midnight = (ts - today_midnight).total_seconds()
     
-    # Avoid division by zero at 00:00:00
+    # Evitar división por cero y no alertar durante la primera hora
     if seconds_since_midnight < (MIN_HOURS_TO_ANALYZE * 3600):
         return None
 
     theoretical_total_samples = seconds_since_midnight / SAMPLING_PERIOD_SECONDS
 
-    # 3. Get Actual Count of Specific Behavior
+    # 3. Conteo real del comportamiento específico en el día
     behavior_events_today = (
         db.query(models.BehaviorEvent)
         .filter(
@@ -819,22 +848,22 @@ def check_and_create_alerts(db: Session, animal_id: str, behavior: str, ts: date
         .count()
     )
 
-    # 4. Calculate Percentage against THEORETICAL Time
-    # This represents: "What % of the elapsed time today was spent doing X?"
+    # 4. Porcentaje contra el tiempo teórico transcurrido
+    # Representa: "¿Qué % del tiempo de hoy se pasó haciendo X?"
     current_pct = (behavior_events_today / theoretical_total_samples) * 100.0
     
-    # Calculate Math Deviation
+    # Desviación respecto al baseline
     deviation = current_pct - baseline_val
     dev_str = f"{deviation:+.1f}%"
 
-    # 5. Analyze Deviation (With Logic Gates)
+    # 5. Análisis de desviación y construcción de resumen
     alert_type = None
     severity = "media"
     resumen = ""
     
     hour = ts.hour
 
-    # --- STEREOTYPY (Critical if high) ---
+    # --- STEREOTYPY (alto es crítico) ---
     if behavior == "Stereotypy":
         threshold = baseline_val + DEFAULT_TOLERANCE
         if current_pct > threshold:
@@ -845,9 +874,9 @@ def check_and_create_alerts(db: Session, animal_id: str, behavior: str, ts: date
                 f"Supera el baseline ({baseline_val}%) en {dev_str}."
             )
 
-    # --- FORAGING (Critical if low) ---
+    # --- FORAGING (bajo es crítico) ---
     elif behavior == "Foraging":
-        # Check only after 4 PM to allow time for feeding
+        # Se revisa solo después de las 16:00 para dar tiempo a la alimentación
         if hour >= 16:
             threshold = max(0, baseline_val - DEFAULT_TOLERANCE)
             if current_pct < threshold:
@@ -858,19 +887,19 @@ def check_and_create_alerts(db: Session, animal_id: str, behavior: str, ts: date
                     f"(Meta: {baseline_val}%). Desviación: {dev_str}"
                 )
 
-    # --- RESTING (Check both High and Low) ---
+    # --- RESTING (se revisa alto y bajo) ---
     elif behavior == "Resting":
         upper_limit = baseline_val + 15.0
         lower_limit = max(0, baseline_val - 15.0)
         
-        # Lethargy check (after noon)
+        # Revisar letargo (después de mediodía)
         if current_pct > upper_limit and hour >= 12:
             alert_type = "baja_actividad"
             resumen = (
                 f"Letargo/Inactividad. Descanso actual: {current_pct:.1f}% "
                 f"(Normal: {baseline_val}%). Desviación: {dev_str}"
             )
-        # Agitation check (after 10 AM)
+        # Revisar falta de descanso (después de 10:00)
         elif current_pct < lower_limit and hour >= 10:
             alert_type = "agitacion"
             resumen = (
@@ -878,28 +907,28 @@ def check_and_create_alerts(db: Session, animal_id: str, behavior: str, ts: date
                 f"(Esperado: {baseline_val}%). Desviación: {dev_str}"
             )
 
-    # --- LOCOMOTION (High is bad) ---
+    # --- LOCOMOTION (alto es problema) ---
     elif behavior == "Locomotion":
         threshold = baseline_val + 10.0
         if current_pct > threshold:
             alert_type = "actividad_excesiva"
             resumen = f"Hiperactividad detectada ({current_pct:.1f}%). Desviación: {dev_str}"
 
-    # --- SOCIAL (Low is bad) ---
+    # --- SOCIAL (bajo es problema) ---
     elif behavior == "Social" and baseline_val > 2.0:
         threshold = max(0, baseline_val - DEFAULT_TOLERANCE)
         if current_pct < threshold:
             alert_type = "aislamiento"
             resumen = f"Aislamiento social ({current_pct:.1f}% vs {baseline_val}%). Desviación: {dev_str}"
 
-    # --- PLAY (Low is bad) ---
+    # --- PLAY (bajo es problema) ---
     elif behavior == "Play" and baseline_val > 2.0:
         threshold = max(0, baseline_val - DEFAULT_TOLERANCE)
         if current_pct < threshold:
             alert_type = "apatia"
             resumen = f"Apatía/Falta de juego ({current_pct:.1f}% vs {baseline_val}%). Desviación: {dev_str}"
 
-    # 6. Save Alert (Anti-Spam)
+    # 6. Guardar alerta evitando spam (no duplicar alertas abiertas del mismo tipo)
     if alert_type:
         existing_alert = (
             db.query(models.Alert)
@@ -913,6 +942,7 @@ def check_and_create_alerts(db: Session, animal_id: str, behavior: str, ts: date
         )
 
         if existing_alert:
+            # Ya hay una alerta abierta del mismo tipo para hoy
             return None 
 
         new_alert = models.Alert(
@@ -929,31 +959,43 @@ def check_and_create_alerts(db: Session, animal_id: str, behavior: str, ts: date
         return new_alert
 
     return None
+
 # =========================================================
-# NEW: INGESTION ENDPOINT (For the AI Pipeline)
+# ENDPOINT DE INGESTA (usado por el pipeline de IA)
 # =========================================================
 
 class EventIngest(BaseModel):
+    """
+    Esquema del evento que envía el pipeline de IA.
+    Si 'ts' es None, se usa el tiempo del servidor.
+    """
     animal_id: str
     behavior: str
     confidence: float
     ts: Optional[datetime] = None  # If null, use server time
 
+
 @router.post("/events", status_code=201)
 def ingest_event(
     body: EventIngest,
     db: Session = Depends(get_db),
-    # Optional: Require auth so random people don't post fake data
+    # Opcional: requerir auth para evitar datos falsos
     # current=Depends(get_current_user) 
 ):
     """
-    This is where your Python AI Script sends data.
-    JSON Body: { "animal_id": "a-001", "behavior": "Resting", "confidence": 0.95 }
+    Endpoint donde el script/servicio de IA envía los eventos de comportamiento.
+    Ejemplo de JSON:
+      { "animal_id": "a-001", "behavior": "Resting", "confidence": 0.95 }
+
+    Flujo:
+      1) Se persiste el evento crudo en la tabla BehaviorEvent
+      2) Se ejecuta la lógica inteligente de alertas
+      3) Se responde indicando si se generó una alerta
     """
-    # 1. Use provided timestamp or current server time
+    # 1. Usar timestamp entregado o el del servidor en la TZ del zoo
     event_ts = body.ts or datetime.now(TZ)
     
-    # 2. Save the Raw Event
+    # 2. Guardar el evento crudo
     event = models.BehaviorEvent(
         animal_id=body.animal_id,
         ts=event_ts,
@@ -963,7 +1005,7 @@ def ingest_event(
     db.add(event)
     db.commit()
 
-    # 3. Run the Intelligent Logic (The Brain)
+    # 3. Ejecutar lógica inteligente ("el cerebro")
     alert = check_and_create_alerts(db, body.animal_id, body.behavior, event_ts)
 
     return {
