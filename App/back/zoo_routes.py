@@ -1,6 +1,8 @@
 from datetime import datetime, date, time, timedelta
 from typing import List, Optional, Dict
 import json
+import csv
+import os
 
 from fastapi import APIRouter, Query, Depends, HTTPException
 from pydantic import BaseModel
@@ -29,28 +31,101 @@ TS = settings.TS_SECONDS
 
 # ------------------ Animales y comportamientos estáticos ------------------
 
+
+def load_baselines_from_csv(filename: str = "baselines.csv") -> Dict:
+    """
+    Lee un CSV en formato ancho:
+    category,Foraging,Resting,Locomotion,...
+    Retorna un diccionario anidado compatible con el sistema.
+    """
+    baseline_data = {}
+    
+    if not os.path.exists(filename):
+        print(f"ADVERTENCIA: No se encontró {filename}, usando valores vacíos.")
+        return {}
+
+    try:
+        with open(filename, mode='r', encoding='utf-8') as csvfile:
+            # DictReader usa la primera fila automáticamente como llaves (Foraging, Resting, etc.)
+            reader = csv.DictReader(csvfile)
+            
+            for row in reader:
+                # 1. Obtenemos la categoría (ej: "default") y la quitamos del diccionario temporal
+                # .pop() obtiene el valor y elimina la clave del diccionario 'row'
+                category = row.pop('category', None) 
+                
+                if not category:
+                    continue # Saltamos filas vacías o sin categoría
+
+                category = category.strip()
+                baseline_data[category] = {}
+
+                # 2. Iteramos sobre las columnas restantes (que ahora son solo comportamientos)
+                for behavior, percentage_str in row.items():
+                    if not behavior: continue # Saltar columnas vacías si las hubiera
+                    
+                    try:
+                        # Convertimos a float, si está vacío asumimos 0.0
+                        pct = float(percentage_str) if percentage_str else 0.0
+                    except ValueError:
+                        print(f"Error parseando porcentaje para {category}->{behavior}: {percentage_str}")
+                        pct = 0.0
+                    
+                    baseline_data[category][behavior.strip()] = pct
+                
+    except Exception as e:
+        print(f"Error crítico al leer CSV de baselines: {e}")
+        
+    return baseline_data
+
+
+def load_animals_from_csv(baselines: Dict, filename: str = "animals.csv") -> List[schemas.Animal]:
+    """
+    Lee el CSV de animales y cruza la información con el diccionario de baselines
+    usando la columna 'baseline_category'.
+    """
+    animals_list = []
+    
+    if not os.path.exists(filename):
+        print(f"ADVERTENCIA: No se encontró {filename}, lista de animales vacía.")
+        return []
+
+    try:
+        with open(filename, mode='r', encoding='utf-8') as csvfile:
+            reader = csv.DictReader(csvfile)
+            
+            for row in reader:
+                # Extraemos la categoría de comportamiento del CSV (ej: "default")
+                category_key = row.get('baseline_category', 'default')
+                
+                # Buscamos esa categoría en los baselines cargados previamente.
+                # Si no existe, usamos "default". Si "default" no existe, un dict vacío.
+                behavior_dict = baselines.get(category_key, baselines.get('default', {}))
+                
+                # Creamos el objeto Schema usando Pydantic
+                try:
+                    animal = schemas.Animal(
+                        animal_id=row['animal_id'],
+                        nombre=row['nombre'],
+                        especie=row['especie'],
+                        baseline_behavior_pct=behavior_dict
+                    )
+                    animals_list.append(animal)
+                except Exception as val_err:
+                    print(f"Error de validación creando animal {row.get('nombre')}: {val_err}")
+
+    except Exception as e:
+        print(f"Error al leer el CSV de animales: {e}")
+
+    return animals_list
+
 # Porcentaje de comportamiento esperado (baseline) para un día completo
-BASELINE_BEHAVIOR_PCT = {
-    "default": {
-        "Foraging": 8,
-        "Resting": 68.0,
-        "Locomotion": 12.0,
-        "Social": 1.0,
-        "Play": 1.0,
-        "Stereotypy": 10.0,
-    },
-}
+
+BASELINE_BEHAVIOR_PCT = load_baselines_from_csv()
+
 
 # Lista estática de animales usada tanto por el frontend como por el generador sintético
-ANIMALS: List[schemas.Animal] = [
-    schemas.Animal(
-        animal_id="a-001",
-        nombre="Fito",
-        especie="Caracal",
-        baseline_behavior_pct=BASELINE_BEHAVIOR_PCT["default"],
-    ),
-    # etc...
-]
+ANIMALS = load_animals_from_csv(BASELINE_BEHAVIOR_PCT, "animals.csv")
 
 
 # Debe coincidir con los labels que espera el frontend

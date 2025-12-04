@@ -1,0 +1,4 @@
+animal_id,nombre,especie,baseline_category
+a-001,Fito,Caracal,default
+a-002,Simba,León,leones
+a-003,Dumbo,Elefante,default

@@ -38,12 +38,12 @@ BACKFILL_EVENTS_PER_HOUR = 2    # cuántos eventos por hora al backfillear
 
 
 def ensure_admin_user(db):
-    user = db.query(models.User).filter(models.User.username == "vicente.florez@uc.cl").first()
+    user = db.query(models.User).filter(models.User.username == "user.base@bz.cl").first()
     if not user:
         print("Creating Admin User...")
         user = models.User(
-            username="vicente.florez@uc.cl",
-            email="vicente.florez@uc.cl",
+            username="user.base@bz.cl",
+            email="user.base@bz.cl",
             hashed_password=hash_password("Vicente1234"),
             full_name="Keeper",
             scopes="keeper",

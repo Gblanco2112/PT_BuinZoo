@@ -67,13 +67,13 @@ async def on_startup():
   try:
     u = (
       db.query(models.User)
-      .filter(models.User.username == "vicente.florez@uc.cl")
+      .filter(models.User.username == "user.base@bz.cl")
       .first()
     )
     if not u:
       u = models.User(
-        username="vicente.florez@uc.cl",
-        email="vicente.florez@uc.cl",
+        username="user.base@bz.cl",
+        email="user.base@bz.cl",
         hashed_password=hash_password("Vicente1234"),
         full_name="Keeper",
         scopes="keeper",
