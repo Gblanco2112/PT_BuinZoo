@@ -1,5 +1,3 @@
----
-
 # 🐾 Buin Zoo – Sistema de Monitoreo de Comportamiento
 
 Este proyecto levanta un sistema completo para monitorear el comportamiento de animales en el Buin Zoo:
@@ -10,7 +8,6 @@ Este proyecto levanta un sistema completo para monitorear el comportamiento de a
 * **Base de datos** (PostgreSQL 16).
 
 Todo está orquestado con **Docker Compose**.
-
 ---
 
 ## 📁 Estructura de carpetas (esperada por `docker-compose.yml`)
