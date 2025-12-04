@@ -70,7 +70,7 @@ El backend expone, entre otros:
 
 > En el startup del backend se crea automáticamente un usuario de pruebas:
 >
-> * **Usuario:** `vicente.florez@uc.cl`
+> * **Usuario:** `user.base@bz.cl `
 > * **Contraseña:** `Vicente1234`
 > * **Rol (scope):** `keeper`
 
@@ -187,7 +187,7 @@ El backend expone, entre otros:
 
 En el boot del backend se seedéa un usuario de desarrollo:
 
-* Usuario: `vicente.florez@uc.cl`
+* Usuario: `user.base@bz.cl `
 * Contraseña: `Vicente1234`
 
 Puedes usarlo para iniciar sesión en el dashboard la primera vez.
