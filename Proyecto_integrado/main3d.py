@@ -13,13 +13,15 @@ from activity_logic import ActivityCheck
 from reconstruccion_3d_yolo import Reconstructor3D
 
 # --- CONFIGURACIÓN DE CÁMARAS (FIJA) ---
+# NOTA: Ch2 se considera izquierda, Ch1 se considera derecha.
 RTSP_LEFT  = "rtsp://view:vieW.,star3250@190.8.125.219:554/cam/realmonitor?channel=2&subtype=0"
 RTSP_RIGHT = "rtsp://view:vieW.,star3250@190.8.125.219:554/cam/realmonitor?channel=1&subtype=0"
 
 class RTSPStream:
     """
-    Clase dedicada a leer el stream en un hilo separado.
-    Evita el 'buffer drift' (lag) descartando frames viejos.
+    Clase dedicada a leer el stream RTSP en un hilo separado.
+    La idea es evitar el 'buffer drift' (lag) descartando frames viejos
+    y exponiendo siempre el frame más reciente.
     """
     def __init__(self, src):
         self.capture = cv2.VideoCapture(src)
@@ -30,7 +32,7 @@ class RTSPStream:
         self.frame = None
         self.stopped = False
         
-        # Leer el primer frame para asegurar conexión
+        # Leer el primer frame para asegurar conexión y obtener metadatos
         if self.capture.isOpened():
             self.status, self.frame = self.capture.read()
             self.width = int(self.capture.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -40,6 +42,7 @@ class RTSPStream:
             self.status = False
 
     def start(self):
+        """Inicia el hilo que actualiza continuamente self.frame."""
         # Iniciar el hilo
         t = threading.Thread(target=self.update, args=())
         t.daemon = True # El hilo muere si el programa principal muere
@@ -47,6 +50,7 @@ class RTSPStream:
         return self
 
     def update(self):
+        """Bucle infinito de lectura de frames mientras no se llame a stop()."""
         # Loop infinito que lee frames lo más rápido posible
         while not self.stopped:
             if not self.capture.isOpened():
@@ -59,24 +63,39 @@ class RTSPStream:
                 self.frame = frame
                 self.status = status
             else:
+                # Si hay error de lectura, detenemos el stream
                 self.stop()
 
     def read(self):
+        """Devuelve el último estado (bool) y frame (np.array) capturados."""
         # Devuelve el último frame capturado
         return self.status, self.frame
 
     def stop(self):
+        """Marca el stream como detenido y libera el recurso de captura."""
         self.stopped = True
         if self.capture.isOpened():
             self.capture.release()
 
 def parse_arguments():
+    """
+    Parseo de argumentos de línea de comando.
+    --view: habilita visualización en ventana.
+    --weights: ruta a los pesos YOLO (.pt) a utilizar.
+    """
     parser = argparse.ArgumentParser(description="Detector de Conducta de Caracal - Dual Cam")
     parser.add_argument("--view", action="store_true", help="Activar visualización combinada")
     parser.add_argument("--weights", type=str, default="yolo_model/best.pt", help="Ruta pesos .pt")
     return parser.parse_args()
 
 def process_camera(model, frame, checker):
+    """
+    Procesa un frame de una cámara:
+      - Ejecuta YOLO con tracking (ByteTrack) para obtener bbox del animal.
+      - Calcula el centroide del bbox.
+      - Actualiza el ActivityCheck con esa posición.
+      - Devuelve bbox y estado estabilizado.
+    """
     # Tracking usando la GPU (device=0)
     results = model.track(
         frame, 
@@ -92,6 +111,7 @@ def process_camera(model, frame, checker):
     pos_actual = np.array([0.0, 0.0])
     bbox = None
 
+    # Revisamos si hay detecciones para este frame
     if results[0].boxes is not None and len(results[0].boxes) > 0:
         box = results[0].boxes[0]
         x1, y1, x2, y2 = box.xyxy[0].tolist()
@@ -100,13 +120,24 @@ def process_camera(model, frame, checker):
         pos_actual = np.array([cx, cy])
         bbox = (int(x1), int(y1), int(x2), int(y2))
 
+    # Paso 1: estado "crudo" según posición actual
     estado_crudo = checker.estado(pos_actual)
+    # Paso 2: almacenar posición en el historial
     checker.update_pos(pos_actual)
+    # Paso 3: obtener estado "estable" filtrado por debouncing
     estado_final = checker.estado_estable(estado_crudo)
     
     return bbox, estado_final
 
 def fusionar_estados(est1, est2):
+    """
+    Fusiona estados detectados por las dos cámaras en un único estado global.
+    Prioridad:
+      1) Pacing
+      2) Movimiento
+      3) Quieto
+      4) N/A
+    """
     estados = [est1, est2]
     if "Pacing" in estados: return "Pacing"
     if "Movimiento" in estados: return "Movimiento"
@@ -114,6 +145,18 @@ def fusionar_estados(est1, est2):
     return "N/A"
 
 def main():
+    """
+    Entrada principal del sistema:
+      - Carga pesos YOLO.
+      - Inicia streams RTSP izquierdo (Ch2) y derecho (Ch1).
+      - Inicializa lógica de actividad 2D y reconstrucción 3D.
+      - Ejecuta loop infinito de:
+          * Lectura de frames
+          * Inferencia YOLO + tracking
+          * Cálculo de estado por cámara
+          * Fusión de estados + reconstrucción 3D
+          * Visualización opcional o impresión en consola.
+    """
     args = parse_arguments()
     
     # 1. Cargar Modelo
@@ -137,10 +180,10 @@ def main():
         stream_right.stop()
         sys.exit(1)
 
-    # Usar FPS detectado o default
+    # Usar FPS detectado o default si no se pudo leer
     fps = stream_left.fps if stream_left.fps > 0 else 20
     
-    # 3. Inicializar Lógica
+    # 3. Inicializar Lógica de actividad (uno por cámara)
     checker_left = ActivityCheck(fm=int(fps))
     checker_right = ActivityCheck(fm=int(fps))
     
@@ -159,6 +202,7 @@ def main():
         cv2.resizeWindow("Monitor Dual Caracal", 1800, 600)
 
     while True:
+        # Lectura del último frame disponible desde cada stream (no bloqueante)
         status_l, frame_left_raw = stream_left.read()  # Leemos el RAW
         status_r, frame_right_raw = stream_right.read() # Leemos el RAW
 
@@ -167,6 +211,7 @@ def main():
             time.sleep(1)
             continue
         
+        # Copias defensivas para evitar manipular directamente los buffers del hilo
         frame_left = frame_left_raw.copy()
         frame_right = frame_right_raw.copy()
 
@@ -184,6 +229,7 @@ def main():
         # --- CÁLCULO 3D ---
         coord_3d_str = "N/A"
         if bbox_l is not None and bbox_r is not None:
+            # Obtenemos coordenada 3D triangulada a partir de ambos bboxes
             punto_3d = reconstructor.obtener_coordenada_3d(bbox_l, bbox_r)
             if punto_3d is not None:
                 x, y, z = punto_3d
@@ -207,20 +253,20 @@ def main():
             else:
                  cv2.putText(frame_right, "Sin deteccion", (30, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
 
-            # Unir
+            # Unir vistas de ambas cámaras horizontalmente
             combined_view = cv2.hconcat([frame_left, frame_right])
 
-            # Info Global
+            # Capa superior con información global (estado + coordenadas 3D)
             cv2.rectangle(combined_view, (0, 0), (combined_view.shape[1], 60), (0,0,0), -1)
             color_text = (200, 200, 200)
             if estado_global == "Quieto": color_text = (0, 255, 0)
             elif estado_global == "Movimiento": color_text = (0, 165, 255)
             elif estado_global == "Pacing": color_text = (0, 0, 255)
 
-            text = f"ESTADO: {estado_global}"
-            text_size = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 1.2, 3)[0]
+            text = f"ESTADO: {estado_global} | 3D: {coord_3d_str}"
+            text_size = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 1.0, 3)[0]
             text_x = (combined_view.shape[1] - text_size[0]) // 2
-            cv2.putText(combined_view, text, (text_x, 45), cv2.FONT_HERSHEY_SIMPLEX, 1.2, color_text, 3)
+            cv2.putText(combined_view, text, (text_x, 45), cv2.FONT_HERSHEY_SIMPLEX, 1.0, color_text, 3)
 
             cv2.imshow("Monitor Dual Caracal", combined_view)
 
@@ -228,8 +274,10 @@ def main():
                 break
         else:
             # IMPRESIÓN EN TERMINAL (Modificado para incluir 3D)
+            # El '\r' al final mantiene una sola línea actualizada.
              print(f"Estado Global: {estado_global} | 3D: {coord_3d_str}   ", end="\r")
 
+    # Limpieza de recursos al salir del loop principal
     stream_left.stop()
     stream_right.stop()
     cv2.destroyAllWindows()

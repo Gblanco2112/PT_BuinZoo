@@ -5,13 +5,16 @@ import sys
 class Reconstructor3D:
     def __init__(self, filename="calibracion_datos.npz", cam_key_1='cam_2', cam_key_2='cam_1'):
         """
-        Inicializa el sistema de reconstrucción.
-        Carga datos y pre-calcula las matrices de proyección (P) para eficiencia.
+        Inicializa el sistema de reconstrucción 3D basado en calibración previa.
+        Carga datos de un archivo .npz y pre-calcula las matrices de proyección
+        de cada cámara para poder triangularel punto 3D de forma eficiente.
         
         Args:
-            filename: Ruta al archivo .npz
-            cam_key_1: Nombre de la clave en el npz para la cámara 1 (ej: 'cam_2' que es la IZQUIERDA en tu main)
-            cam_key_2: Nombre de la clave en el npz para la cámara 2 (ej: 'cam_1' que es la DERECHA en tu main)
+            filename: Ruta al archivo .npz de calibración generado por get_8points.py.
+            cam_key_1: Clave en el archivo npz para la cámara 1 
+                       (por ejemplo 'cam_2' que se usa como IZQUIERDA).
+            cam_key_2: Clave en el archivo npz para la cámara 2
+                       (por ejemplo 'cam_1' que se usa como DERECHA).
         """
         self.valid = False
         self.P1 = None
@@ -34,7 +37,7 @@ class Reconstructor3D:
             pts_2d_cam1 = data[cam_key_1]
             pts_2d_cam2 = data[cam_key_2]
 
-            # Pre-calcular matrices P (Solo se hace una vez al inicio)
+            # Pre-calcular matrices P (Solo se hace una vez al inicio usando DLT)
             self.P1 = self._calculate_projection_matrix(pts_2d_cam1, points_3d)
             self.P2 = self._calculate_projection_matrix(pts_2d_cam2, points_3d)
             self.valid = True
@@ -44,7 +47,13 @@ class Reconstructor3D:
             print(f"❌ ERROR 3D: Fallo al inicializar: {e}")
 
     def _calculate_projection_matrix(self, points_2d, points_3d):
-        """Método interno DLT para calcular matriz P."""
+        """
+        Método interno que estima la matriz de proyección P para una cámara 
+        mediante el algoritmo DLT (Direct Linear Transform).
+        
+        points_2d: array Nx2 con puntos en imagen.
+        points_3d: array Nx3 con puntos en el espacio.
+        """
         A = []
         for i in range(len(points_2d)):
             u, v = points_2d[i]
@@ -53,12 +62,13 @@ class Reconstructor3D:
             A.append([  0,  0,  0,  0, -X, -Y, -Z, -1, v*X, v*Y, v*Z, v ])
         
         A = np.array(A)
+        # Resolución por SVD: el último vector de Vt corresponde a la solución
         U, S, Vt = np.linalg.svd(A)
         P = Vt[-1].reshape(3, 4)
         return P
 
     def _get_bbox_center(self, bbox):
-        """Calcula centro (x, y) desde [x1, y1, x2, y2]."""
+        """Calcula centro (x, y) de un bounding box [x1, y1, x2, y2]."""
         # bbox puede venir como tensor o lista, aseguramos numpy
         if hasattr(bbox, 'cpu'): bbox = bbox.cpu().numpy()
         if hasattr(bbox, 'numpy'): bbox = bbox.numpy()
@@ -69,9 +79,13 @@ class Reconstructor3D:
         return np.array([cx, cy])
 
     def _triangulate_point(self, P1, P2, point1, point2):
-        """Triangula la posición 3D."""
+        """
+        Triangula la posición 3D aproximada a partir de dos puntos
+        en imagen (uno por cámara) y sus respectivas matrices de proyección.
+        """
         u1, v1 = point1
         u2, v2 = point2
+        # Construcción del sistema lineal según el modelo pinhole
         A = np.array([
             u1 * P1[2] - P1[0],
             v1 * P1[2] - P1[1],
@@ -80,21 +94,30 @@ class Reconstructor3D:
         ])
         U, S, Vt = np.linalg.svd(A)
         X_homogeneous = Vt[-1]
+        # Convertimos de coordenadas homogéneas (X,Y,Z,W) a (X,Y,Z)
         return X_homogeneous[:3] / X_homogeneous[3]
 
     def obtener_coordenada_3d(self, bbox_cam1, bbox_cam2):
         """
-        Recibe dos bounding boxes y retorna (X, Y, Z).
-        Retorna None si el sistema no está calibrado o hay error.
+        Recibe dos bounding boxes (uno por cámara) y retorna (X, Y, Z) estimado.
+        
+        Args:
+            bbox_cam1: bbox de cámara 1 [x1, y1, x2, y2].
+            bbox_cam2: bbox de cámara 2 [x1, y1, x2, y2].
+        
+        Return:
+            np.array [X, Y, Z] con coordenadas 3D en el sistema definido por la calibración,
+            o None si el sistema no está calibrado o se produce un error numérico.
         """
         if not self.valid:
+            # Si la calibración no se cargó correctamente, no se puede triangular
             return None
 
-        # 1. Obtener centros
+        # 1. Obtener centros (u, v) de cada bbox
         center_1 = self._get_bbox_center(bbox_cam1)
         center_2 = self._get_bbox_center(bbox_cam2)
 
-        # 2. Triangular
+        # 2. Triangular el punto 3D a partir de ambos centros y matrices P1/P2
         try:
             point_3d = self._triangulate_point(self.P1, self.P2, center_1, center_2)
             return point_3d # Array [X, Y, Z]

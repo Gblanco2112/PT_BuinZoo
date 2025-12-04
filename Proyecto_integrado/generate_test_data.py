@@ -35,9 +35,11 @@ DAYS_HISTORY = 7                # 7 Días de historial
 BACKFILL_EVENTS_PER_HOUR = 2    # cuántos eventos por hora al backfillear
 
 
-
-
 def ensure_admin_user(db):
+    """
+    Crea un usuario administrador por defecto si no existe.
+    Útil para entornos de desarrollo / pruebas.
+    """
     user = db.query(models.User).filter(models.User.username == "vicente.florez@uc.cl").first()
     if not user:
         print("Creating Admin User...")
@@ -58,7 +60,12 @@ def ensure_admin_user(db):
 # -------------------------------------------------------------------
 
 def pick_behavior_for_hour(hour: int) -> str:
-    # ... (Lógica de pesos original) ...
+    """
+    Selecciona un comportamiento probable según la hora del día.
+    Se definen distribuciones de probabilidad (weights) para cada bloque horario.
+    Además, se inyecta una pequeña probabilidad de 'Stereotypy' para testear alertas.
+    """
+    # Definición heurística de pesos por franja horaria
     if 0 <= hour < 6:
         weights = {"Resting": 0.7, "Locomotion": 0.1, "Foraging": 0.1, "Play": 0.05, "Social": 0.05, "Stereotypy": 0.0}
     elif 6 <= hour < 10:
@@ -70,6 +77,7 @@ def pick_behavior_for_hour(hour: int) -> str:
     else:
         weights = {"Resting": 0.6, "Locomotion": 0.15, "Foraging": 0.1, "Play": 0.05, "Social": 0.1, "Stereotypy": 0.0}
 
+    # Convertimos los pesos a un vector de probabilidades en el orden de BEHAVIORS
     probs = [weights.get(b, 0.01) for b in BEHAVIORS]
     total = sum(probs)
     probs = [p / total for p in probs]
@@ -79,16 +87,27 @@ def pick_behavior_for_hour(hour: int) -> str:
     if random.random() < 0.02: # 2% chance de anomalía forzada
         return "Stereotypy"
         
+    # Selección aleatoria según distribución de probabilidad
     return random.choices(BEHAVIORS, weights=probs, k=1)[0]
 
 
 def emit_events_for_timestamp(ts: datetime, db, emit_alerts: bool = True):
+    """
+    Genera y almacena eventos de comportamiento para todos los animales
+    en un timestamp específico. Opcionalmente dispara la lógica de alertas.
+    
+    ts: datetime que representa el instante de simulación.
+    db: sesión de base de datos activa.
+    emit_alerts: si es True, ejecuta check_and_create_alerts para cada evento.
+    """
     hour = ts.hour
     for animal in ANIMALS:
+        # 1. Seleccionar comportamiento según la hora
         behavior = pick_behavior_for_hour(hour)
+        # 2. Simular un nivel de confianza (ruido entre 0.6 y 0.99)
         confidence = round(random.uniform(0.6, 0.99), 2)
 
-        # 1. Crear Evento
+        # 1. Crear Evento de comportamiento
         ev = models.BehaviorEvent(
             animal_id=animal.animal_id,
             ts=ts,
@@ -112,12 +131,17 @@ def emit_events_for_timestamp(ts: datetime, db, emit_alerts: bool = True):
 # -------------------------------------------------------------------
 
 def backfill_full_day(day: date, db):
+    """
+    Genera un día completo de eventos históricos (24h) para todos los animales.
+    Incluye también la generación de alertas durante ese día.
+    """
     day_start = datetime.combine(day, time.min, tzinfo=TZ)
     print(f"[backfill] Generando eventos crudos para {day}...")
 
     # Permitimos alertas en el historial para que los PDFs tengan contenido interesante
     for h in range(24):
         for k in range(BACKFILL_EVENTS_PER_HOUR):
+            # Se distribuyen BACKFILL_EVENTS_PER_HOUR eventos por cada hora
             minute = int(60 / BACKFILL_EVENTS_PER_HOUR * k)
             ts = day_start + timedelta(hours=h, minutes=minute)
             emit_events_for_timestamp(ts, db, emit_alerts=True) # Alertas ACTIVADAS en historial
@@ -126,12 +150,17 @@ def backfill_full_day(day: date, db):
 
 
 def backfill_today_until_last_hour(db):
+    """
+    Genera eventos históricos para el día actual desde las 00:00
+    hasta la última hora completa (excluye la hora parcial en curso).
+    """
     now_local = datetime.now(TZ)
     today = now_local.date()
     day_start = datetime.combine(today, time.min, tzinfo=TZ)
 
     current_hour = now_local.hour
     if current_hour == 0:
+        # Si aún es la primera hora del día, no hay nada que backfillear
         return
 
     print(f"[backfill] Generando datos parciales para HOY ({today}) hasta la hora {current_hour - 1}...")
@@ -150,6 +179,12 @@ def backfill_today_until_last_hour(db):
 # -------------------------------------------------------------------
 
 def step_once_realtime(db):
+    """
+    Ejecuta un solo paso del simulador en tiempo real:
+    - Genera eventos para la hora/minuto actual.
+    - Dispara la lógica de alertas.
+    - Hace commit de la transacción.
+    """
     now_local = datetime.now(TZ)
     emit_events_for_timestamp(now_local, db, emit_alerts=True)
     db.commit()
@@ -157,6 +192,15 @@ def step_once_realtime(db):
 
 
 def main():
+    """
+    Punto de entrada principal de la simulación.
+    
+    Flujo:
+      1) Limpia tablas BehaviorEvent, Alert, WelfareReport.
+      2) Genera historial de DAYS_HISTORY días previos + sus reportes.
+      3) Backfill de eventos del día actual hasta la última hora completa.
+      4) Entra en un bucle infinito generando datos en tiempo real.
+    """
     random.seed()
 
     db = SessionLocal()
@@ -187,7 +231,7 @@ def main():
                 )
             print(f"[reports] Reportes listos para {day}.")
 
-        # 3) Backfill de hoy
+        # 3) Backfill de hoy (hasta la última hora completa)
         backfill_today_until_last_hour(db)
 
         # 4) Loop en tiempo real
@@ -196,11 +240,13 @@ def main():
 
         while True:
             step_once_realtime(db)
+            # Pausa entre ticks de simulación en tiempo real
             pytime.sleep(TS_SECONDS)
 
     except KeyboardInterrupt:
         print("\nSimulation stopped by user.")
     finally:
+        # Aseguramos cierre limpio de la sesión
         db.close()
 
 
