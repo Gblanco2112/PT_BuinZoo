@@ -29,7 +29,6 @@ A partir del `docker-compose.yml`:
 * `docker-compose.yml`
   Orquestación de todos los servicios.
 
-> Asegúrate de que estas rutas existan; el `docker-compose.yml` las referencia directamente en los `build.context` y en los `volumes`.
 
 ---
 
@@ -60,8 +59,8 @@ A partir del `docker-compose.yml`:
   * `POSTGRES_USER=buinzoo`
   * `POSTGRES_PASSWORD=buinzoo_password`
   * `POSTGRES_DB=buinzoo`
-  * `SECRET_KEY=super_secret_dev_key_change_in_prod` (cámbialo en producción 🔐)
-* Depende de `db` (espera a que esté healthy).
+  * `SECRET_KEY=super_secret_dev_key_change_in_prod` 
+* Depende de `db`.
 * Conectado a la red `zoo_net`.
 
 El backend expone, entre otros:
@@ -101,7 +100,6 @@ El backend expone, entre otros:
   * `RTSP_LEFT=rtsp://...`
   * `RTSP_RIGHT=rtsp://...`
 
-    > 🔁 Cambia estas URLs a tus propias cámaras RTSP, o coméntalas si no vas a usar video real.
 * Volúmenes:
 
   * `./vision/yolo_model:/app/yolo_model` → carpeta local con pesos del modelo.
@@ -118,7 +116,7 @@ El backend expone, entre otros:
 
 * [Docker](https://www.docker.com/) instalado.
 * [Docker Compose](https://docs.docker.com/compose/) (en Docker Desktop ya viene).
-* (Opcional) **GPU NVIDIA** con drivers + runtime de Docker configurado para el servicio `vision_caracal`.
+* (CRITICO) **GPU NVIDIA** con drivers + runtime de Docker configurado para el servicio `vision_caracal`.
 
 ---
 
@@ -132,8 +130,6 @@ El backend expone, entre otros:
 
 2. (Opcional pero recomendado) revisar y ajustar el archivo `docker-compose.yml`:
 
-   * Cambiar `SECRET_KEY` en el servicio `web`.
-   * Cambiar las URLs `RTSP_LEFT` y `RTSP_RIGHT` del servicio `vision_caracal`.
    * Confirmar que las rutas de `build.context` y `dockerfile` existen:
 
      * `back/Dockerfile`
@@ -177,13 +173,13 @@ El backend expone, entre otros:
 ## 🌐 Acceso a la aplicación
 
 * **Dashboard (frontend)**
-  👉 `http://localhost`
+  👉 `http://127.0.0.1/`
 
 * **API FastAPI**
-  👉 `http://localhost:8000`
+  👉 `http://127.0.0.1:8000`
 
 * **Swagger / documentación API**
-  👉 `http://localhost:8000/docs`
+  👉 `http://127.0.0.1:8000/docs`
 
 ---
 
